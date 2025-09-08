@@ -1,4 +1,4 @@
-package groth16
+package constraintsys
 
 import (
 	"github.com/consensys/gnark-crypto/ecc"
@@ -6,13 +6,13 @@ import (
 	"github.com/consensys/gnark/test"
 	"math/big"
 	"testing"
-	"volte/backend/zkproofs/groth16/circuits"
+	circuits2 "volte/backend/crypto/circuits"
 )
 
 func TestVolteCircuit(t *testing.T) {
 	assert := test.NewAssert(t)
 
-	merkleCircuit := circuits.MerkleCircuit{
+	merkleCircuit := circuits2.MerkleCircuit{
 		MerkleRoot:    "7356920758325201059908902373941132312982459912789273619201826660050410247863",
 		LeafValue:     "4137760094704180852789719500758563423980885922685717827383305955441808899436",
 		PathPositions: []frontend.Variable{0, 0, 1, 0, 1, 1, 1, 0},
@@ -28,13 +28,13 @@ func TestVolteCircuit(t *testing.T) {
 		},
 	}
 
-	poseidonCircuit := circuits.PoseidonCircuit{
+	poseidonCircuit := circuits2.PoseidonCircuit{
 		SecretKey: "5483851157728431092195247496931641754059230332466588572732387297395134828078",
 		EventID:   "3523196653250260958887739657950671762678466692388251624290163732010351636053",
 		Nullifier: "7193063174895994881691285216265347816684682062856292682827508574744185066741",
 	}
 
-	voteCircuit := circuits.VoteCircuit{
+	voteCircuit := circuits2.VoteCircuit{
 		Vote: big.NewInt(40),
 	}
 
@@ -43,7 +43,7 @@ func TestVolteCircuit(t *testing.T) {
 	// We are passing a real instance of MerkleCircuit here because the circuit's logics are tightly coupled to
 	// the input variables.
 	assert.SolvingSucceeded(
-		&volteCircuit{Merkle: &merkleCircuit, Vote: &circuits.VoteCircuit{}, Poseidon: &circuits.PoseidonCircuit{}},
+		&volteCircuit{Merkle: &merkleCircuit, Vote: &circuits2.VoteCircuit{}, Poseidon: &circuits2.PoseidonCircuit{}},
 		&volteCircuits, test.WithCurves(ecc.BLS12_377),
 	)
 
