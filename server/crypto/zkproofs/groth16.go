@@ -7,14 +7,23 @@ import (
 	"volte/backend/crypto/constraintsys"
 )
 
-type VolteGroth16 struct {
+// Groth16 is a base Groth16 wrapper that corresponding to an R1CS.
+type Groth16 struct {
 	r1cs         constraintsys.VolteR1CS
 	provingKey   groth16.ProvingKey
 	verifyingKey groth16.VerifyingKey
 }
 
-func (g *VolteGroth16) Setup() {
-	g.r1cs = constraintsys.NewVolteBLS12377R1CS()
+func (g *Groth16) GetProvingKey() groth16.ProvingKey {
+	return g.provingKey
+}
+
+func (g *Groth16) GetVerifyingKey() groth16.VerifyingKey {
+	return g.verifyingKey
+}
+
+func (g *Groth16) Setup(constraintSystem constraintsys.VolteR1CS) {
+	g.r1cs = constraintSystem
 	cs := g.r1cs.Compile()
 	slog.Info("Successfully compiled the volte circuit.")
 	slog.Info(fmt.Sprintf("Number of public variables in the circuit : %d", cs.GetNbPublicVariables()))
@@ -28,12 +37,4 @@ func (g *VolteGroth16) Setup() {
 	slog.Info("Successfully build groth16 zkproof")
 	g.provingKey = provingKey
 	g.verifyingKey = verifyingKey
-}
-
-func (g *VolteGroth16) GetProvingKey() groth16.ProvingKey {
-	return g.provingKey
-}
-
-func (g *VolteGroth16) GetVerifyingKey() groth16.VerifyingKey {
-	return g.verifyingKey
 }

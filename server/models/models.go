@@ -10,12 +10,14 @@ func (e Event) CalculateEventHash() string {
 	return ""
 }
 
+// Nullifier is just a string with Serialize() function, making it compatible with incremental merkle tree
 type Nullifier string
 
 func (n Nullifier) Serialize() ([]byte, error) {
 	return []byte(n), nil
 }
 
+// EventVote is just a string with Serialize() function, making it compatible with incremental merkle tree
 type EventVote string
 
 func (e EventVote) Serialize() ([]byte, error) {

@@ -2,6 +2,7 @@ package service
 
 import (
 	"volte/backend/chain"
+	"volte/backend/crypto/zkproofs"
 )
 
 type keyValDatabase interface {
@@ -12,9 +13,16 @@ type keyValDatabase interface {
 type VotingService struct {
 	keyValDB        keyValDatabase
 	contractManager *chain.EthereumChainHandler
+
+	volteGroth16      *zkproofs.Groth16
+	CipherTextGroth16 *zkproofs.Groth16
+	TallyGroth16      *zkproofs.Groth16
 }
 
 func NewVotingService() *VotingService {
+	// Initialize a KV DB
+	// Initialize ethereum contract client
+	// fetch Groth16 specs from redis
 	return &VotingService{}
 
 }
