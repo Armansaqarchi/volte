@@ -1,15 +1,22 @@
 package service
 
+import (
+	"volte/backend/chain"
+)
+
 type keyValDatabase interface {
 	Get(key string) ([]byte, error)
 	Set(key string, value []byte) error
 }
+
 type VotingService struct {
-	keyValDB keyValDatabase
+	keyValDB        keyValDatabase
+	contractManager *chain.EthereumChainHandler
 }
 
 func NewVotingService() *VotingService {
 	return &VotingService{}
+
 }
 
 func (v *VotingService) AddMemberToEvent() {
@@ -39,5 +46,7 @@ func (v *VotingService) Vote() {
 	// check authority
 	// pre-filter invalid votes to reduce gas fee as much as possible
 	// check nullifier proof (via contract RPC call)
-	// submit vote value
+	// submit vote value and update incremental merkle tree
+
+	// Note: use locking to avoid race condition
 }

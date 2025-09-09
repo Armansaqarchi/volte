@@ -1,18 +1,10 @@
 package main
 
 import (
-	"context"
 	"crypto/rand"
 	"flag"
 	"fmt"
-	"log"
-	"math/big"
-	"volte/backend/chain/contracts"
-
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
+	"volte/backend/chain"
 
 	//func main() {
 	//	//r1cs := groth16.NewVolteBLS12377R1CS(10 /* nullifierTreeDepth */)
@@ -144,60 +136,12 @@ func generateRandBlocks(size int) (blocks []mt.DataBlock) {
 	return
 }
 
-var (
-	walletPrivateKey = flag.String(
-		"wallet_private_key",
-		"",
-		"Wallet private key for signing write transactions and read operations.",
-	)
-	chainRpcNodeUrl = flag.String(
-		"chain_rpc_node_url", "", "Url of RPC node on blockchain used to submit transactions.",
-	)
-	contractAddress = flag.String("contract_address", "", "Contract address.")
-)
-
 func main() {
 	flag.Parse()
-
-	fmt.Println(*walletPrivateKey)
-	fmt.Println(*chainRpcNodeUrl)
-	fmt.Println(*contractAddress)
-	client, err := ethclient.Dial(*chainRpcNodeUrl)
+	h := chain.NewEthereumChainHandler()
+	res, err := h.GetVolteContract().SayHello()
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
-	defer client.Close()
-	// Load your private key (test account with Sepolia ETH)
-	privateKey, err := crypto.HexToECDSA(*walletPrivateKey)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fromAddress := crypto.PubkeyToAddress(privateKey.PublicKey)
-	// Get nonce, gas price, chain ID
-	nonce, _ := client.PendingNonceAt(context.Background(), fromAddress)
-	gasPrice, _ := client.SuggestGasPrice(context.Background())
-	chainID, _ := client.NetworkID(context.Background())
-
-	auth, _ := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
-	auth.Nonce = big.NewInt(int64(nonce))
-	auth.Value = big.NewInt(0)     // in wei (0 ETH)
-	auth.GasLimit = uint64(300000) // adjust if needed
-	auth.GasPrice = gasPrice
-
-	contractAddr := common.HexToAddress(*contractAddress)
-	// Bind contract instance
-	instance, err := contracts.NewContract(contractAddr, client)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Example: call a READ function (no gas needed)
-	result, err := instance.SayHello(&bind.CallOpts{
-		Pending: false,
-		From:    fromAddress,
-		Context: context.Background(),
-	})
-
-	fmt.Println(result)
+	fmt.Println(res)
 }

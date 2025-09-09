@@ -31,7 +31,7 @@ type EthereumChainHandler struct {
 	volteContract *contracts.ContractSession
 }
 
-func NewContractManager() *EthereumChainHandler {
+func NewEthereumChainHandler() *EthereumChainHandler {
 	client, err := ethclient.Dial(*chainRpcNodeUrl)
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to Dial chain rpc node. err : %s", err))
@@ -62,4 +62,8 @@ func NewContractManager() *EthereumChainHandler {
 			},
 		},
 	}
+}
+
+func (e *EthereumChainHandler) GetVolteContract() *contracts.ContractSession {
+	return e.volteContract
 }
