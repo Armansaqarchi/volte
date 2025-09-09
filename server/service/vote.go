@@ -1,11 +1,11 @@
 package service
 
-type KeyValDatabase interface {
+type keyValDatabase interface {
 	Get(key string) ([]byte, error)
 	Set(key string, value []byte) error
 }
 type VotingService struct {
-	keyValDB KeyValDatabase
+	keyValDB keyValDatabase
 }
 
 func NewVotingService() *VotingService {
@@ -37,6 +37,7 @@ func (v *VotingService) RemoveEvent() {
 
 func (v *VotingService) Vote() {
 	// check authority
+	// pre-filter invalid votes to reduce gas fee as much as possible
 	// check nullifier proof (via contract RPC call)
 	// submit vote value
 }

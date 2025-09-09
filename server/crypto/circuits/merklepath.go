@@ -14,7 +14,7 @@ type MerkleCircuit struct {
 	LeafValue  frontend.Variable
 	// List of siblings alongside the leaf's path up to the root.
 	MerklePath []frontend.Variable
-	// List of bits indicating child position at each index (0 indicates left, 1 indicates right). Without positions,
+	// List of bits indicating child position at each index (0 indicates left, 1 indicates right). Without this,
 	// positions can be mistaken and result in wrong hashing.
 	PathPositions []frontend.Variable
 }

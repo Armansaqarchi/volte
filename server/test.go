@@ -186,7 +186,6 @@ func main() {
 	auth.GasPrice = gasPrice
 
 	contractAddr := common.HexToAddress(*contractAddress)
-
 	// Bind contract instance
 	instance, err := contracts.NewContract(contractAddr, client)
 	if err != nil {
