@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+// Commitment is just a string with Serialize() function, making it compatible with merkle tree
+type Commitment string
+
+func (e Commitment) Serialize() ([]byte, error) {
+	return []byte(e), nil
+}
+
 type Event struct {
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
@@ -22,7 +29,7 @@ func (e *Event) CalculateEventHash() []byte {
 	return []byte("")
 }
 
-func (e *Event) startEvent() error {
+func (e *Event) StartEvent() error {
 	if e.StartTime.IsZero() {
 		e.StartTime = time.Now()
 		return nil
@@ -30,7 +37,7 @@ func (e *Event) startEvent() error {
 	return fmt.Errorf(fmt.Sprintf("Event %s has already started!", e.ID))
 }
 
-func (e *Event) eventEnded() bool {
+func (e *Event) EventEnded() bool {
 	return time.Now().After(e.StartTime.Add(e.Duration))
 }
 
@@ -39,11 +46,4 @@ type Nullifier string
 
 func (n Nullifier) Serialize() ([]byte, error) {
 	return []byte(n), nil
-}
-
-// EventVote is just a string with Serialize() function, making it compatible with incremental merkle tree
-type EventVote string
-
-func (e EventVote) Serialize() ([]byte, error) {
-	return []byte(e), nil
 }
