@@ -11,7 +11,7 @@ import (
 type MerkleCircuit struct {
 	// We keep merkleRoot public because it's supposed to be stored on chain.
 	MerkleRoot frontend.Variable `gnark:",public"`
-	LeafValue  frontend.Variable
+	LeafValue  frontend.Variable `gnark:",public"`
 	// List of siblings alongside the leaf's path up to the root.
 	MerklePath []frontend.Variable
 	// List of bits indicating child position at each index (0 indicates left, 1 indicates right). Without this,

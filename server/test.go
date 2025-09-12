@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"flag"
 	"fmt"
+	"math/big"
 	"volte/backend/chain"
 
 	//func main() {
@@ -139,7 +140,7 @@ func generateRandBlocks(size int) (blocks []mt.DataBlock) {
 func main() {
 	flag.Parse()
 	h := chain.NewEthereumChainHandler()
-	res, err := h.GetVolteContract().SayHello()
+	res, err := h.GetVolteContract().GetEventHash(big.NewInt(2))
 	if err != nil {
 		panic(err)
 	}

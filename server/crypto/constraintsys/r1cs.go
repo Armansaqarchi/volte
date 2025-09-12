@@ -63,3 +63,5 @@ func (v volteR1CS) Compile() constraint.ConstraintSystem {
 	}
 	return volteR1CS
 }
+
+// generate R1CS for other circuits as well.

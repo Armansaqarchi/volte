@@ -28,7 +28,7 @@ type EthereumChainHandler struct {
 	client      *ethclient.Client // Ethereum client for RPC communication.
 	fromAddress common.Address    // Server wallet address.
 	// List of contracts.
-	volteContract *contracts.ContractSession
+	volteContract *contracts.ContractsSession
 }
 
 func NewEthereumChainHandler() *EthereumChainHandler {
@@ -44,7 +44,7 @@ func NewEthereumChainHandler() *EthereumChainHandler {
 		panic(err)
 	}
 	fromAddress := crypto.PubkeyToAddress(privateKey.PublicKey)
-	volteContract, err := contracts.NewContract(common.HexToAddress(*contractAddress), client)
+	volteContract, err := contracts.NewContracts(common.HexToAddress(*contractAddress), client)
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to create contract. err : %s", err))
 		panic(err)
@@ -53,7 +53,7 @@ func NewEthereumChainHandler() *EthereumChainHandler {
 	return &EthereumChainHandler{
 		client:      client,
 		fromAddress: fromAddress,
-		volteContract: &contracts.ContractSession{
+		volteContract: &contracts.ContractsSession{
 			Contract: volteContract,
 			CallOpts: bind.CallOpts{
 				From:    fromAddress,
@@ -64,6 +64,6 @@ func NewEthereumChainHandler() *EthereumChainHandler {
 	}
 }
 
-func (e *EthereumChainHandler) GetVolteContract() *contracts.ContractSession {
+func (e *EthereumChainHandler) GetVolteContract() *contracts.ContractsSession {
 	return e.volteContract
 }

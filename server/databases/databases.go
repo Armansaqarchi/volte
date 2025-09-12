@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-
 var (
 	redisHost     = flag.String("redisHost", "localhost", "Redis host")
 	redisPort     = flag.Int("redisPort", 6379, "Redis port")

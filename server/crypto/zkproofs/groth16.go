@@ -22,7 +22,8 @@ func (g *Groth16) GetVerifyingKey() groth16.VerifyingKey {
 	return g.verifyingKey
 }
 
-func (g *Groth16) Setup(constraintSystem constraintsys.VolteR1CS) {
+func SetupNewGroth16(constraintSystem constraintsys.VolteR1CS) *Groth16 {
+	g := new(Groth16)
 	g.r1cs = constraintSystem
 	cs := g.r1cs.Compile()
 	slog.Info("Successfully compiled the volte circuit.")
@@ -37,4 +38,6 @@ func (g *Groth16) Setup(constraintSystem constraintsys.VolteR1CS) {
 	slog.Info("Successfully build groth16 zkproof")
 	g.provingKey = provingKey
 	g.verifyingKey = verifyingKey
+
+	return g
 }
