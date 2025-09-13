@@ -15,12 +15,12 @@ func (e Commitment) Serialize() ([]byte, error) {
 type Event struct {
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
-	Admin       string         `json:"admin"`
+	Admin       string         `json:"admin"`		 // Owner of this event.
 	Duration    time.Duration  `json:"duration"`
 	StartTime   time.Time      `json:"start_time"`
 	VoteOptions []string       `json:"votes"`        // List of possible vote values.
 	VoteMembers []string       `json:"vote_members"` // List of members eligible for voting.
-	Tally       map[string]int `json:"tally"`        // The overall score for each VoteOption after event ending
+	Tally       map[string]int `json:"tally"`        // The overall score for each VoteOption after event ending.
 	Revoked     bool           `json:"revoked"`      // Whether event has been revoked because of security issues.
 }
 

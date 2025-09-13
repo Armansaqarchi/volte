@@ -2,42 +2,45 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/txaty/go-merkletree"
 	"log/slog"
 	"math/big"
 	"net/http"
 	"strconv"
+	"time"
+
 	"volte/backend/chain"
 	"volte/backend/crypto/constraintsys"
 	"volte/backend/crypto/zkproofs"
 	"volte/backend/models"
 
 	"github.com/gin-gonic/gin"
+	"github.com/txaty/go-merkletree"
 )
 
 type keyValDatabase interface {
-	Get(key string) ([]byte, error)
-	Set(key string, value []byte) error
+	Get(ctx context.Context, key string) ([]byte, error)
+	Set(ctx context.Context, key string, value interface{}, duration time.Duration) error
 }
 
 type VotingService struct {
 	keyValDB        keyValDatabase
-	contractManager *chain.EthereumChainHandler
+	contractHandler chain.ContractHandler
 
 	volteGroth16      *zkproofs.Groth16
 	cipherTextGroth16 *zkproofs.Groth16
 	tallyGroth16      *zkproofs.Groth16
 }
 
-func NewVotingService(keyValueDB keyValDatabase, contractManager *chain.EthereumChainHandler) *VotingService {
+func NewVotingService(keyValueDB keyValDatabase, contractManager *chain.EthereumContractHandler) *VotingService {
 	// Initialize a KV DB
 	// Initialize ethereum contract client
 	// fetch Groth16 specs from redis
 	return &VotingService{
 		keyValDB:          keyValueDB,
-		contractManager:   contractManager,
+		contractHandler:   contractManager,
 		volteGroth16:      zkproofs.SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS()),
 		cipherTextGroth16: zkproofs.SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS()),
 		tallyGroth16:      zkproofs.SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS()),
@@ -46,6 +49,7 @@ func NewVotingService(keyValueDB keyValDatabase, contractManager *chain.Ethereum
 }
 
 func (v *VotingService) AddMemberToEvent(ctx *gin.Context) {
+	// add security step
 	eventId, err := strconv.ParseInt(ctx.Query("event_id"), 10, 64)
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to parse event_id, err : %s", err.Error()))
@@ -53,7 +57,9 @@ func (v *VotingService) AddMemberToEvent(ctx *gin.Context) {
 			"message": "Failed to parse event_id",
 		})
 	}
-	eventBytes, err := v.keyValDB.Get(fmt.Sprintf(fmt.Sprintf("volte:models:events:%d", eventId)))
+	eventBytes, err := v.keyValDB.Get(
+		ctx, fmt.Sprintf(fmt.Sprintf("volte:models:events:%d", eventId)),
+	)
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to get event %d from redis, err : %s", eventId, err.Error()))
 		ctx.JSON(http.StatusInternalServerError, gin.H{
@@ -74,7 +80,7 @@ func (v *VotingService) AddMemberToEvent(ctx *gin.Context) {
 		})
 		return
 	}
-	eventHash, err := v.contractManager.GetVolteContract().GetEventHash(big.NewInt(eventId))
+	eventHash, err := v.contractHandler.GetVolteContract().GetEventHash(big.NewInt(eventId))
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to get event hash, err : %s", err.Error()))
 		ctx.JSON(http.StatusInternalServerError, gin.H{
@@ -98,7 +104,7 @@ func (v *VotingService) AddMemberToEvent(ctx *gin.Context) {
 		})
 	}
 	event.VoteMembers = append(event.VoteMembers, identitySecret)
-	_, err = v.contractManager.GetVolteContract().SetEventHash(
+	_, err = v.contractHandler.GetVolteContract().SetEventHash(
 		big.NewInt(eventId), event.CalculateEventHash(),
 	)
 	if err != nil {
@@ -108,7 +114,7 @@ func (v *VotingService) AddMemberToEvent(ctx *gin.Context) {
 		})
 		return
 	}
-	if err := v.keyValDB.Set("volte:models:events:%s", eventBytes); err != nil {
+	if err := v.keyValDB.Set(ctx, "volte:models:events:%s", eventBytes, 10*time.Second); err != nil {
 		slog.Error(fmt.Sprintf("Failed to store event hash, err : %s", err.Error()))
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": fmt.Sprintf("Failed to store event"),
@@ -126,7 +132,7 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 		slog.Error(fmt.Sprintf("Failed to parse event_id, err : %s", err.Error()))
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Failed to parse event_id"})
 	}
-	eventBytes, err := v.keyValDB.Get(fmt.Sprintf(fmt.Sprintf("volte:models:events_%d", eventID)))
+	eventBytes, err := v.keyValDB.Get(ctx, fmt.Sprintf(fmt.Sprintf("volte:models:events_%d", eventID)))
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to get event %d from redis, err : %s", eventID, err.Error()))
 		ctx.JSON(
@@ -165,8 +171,8 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 			http.StatusInternalServerError, gin.H{"message": fmt.Sprintf("Failed to marshal commitments")},
 		)
 	}
-	if err := v.keyValDB.Set(
-		fmt.Sprintf("volte:models:events:trees:%d", eventID), commitmentsTreeBytes,
+	if err := v.keyValDB.Set(ctx,
+		fmt.Sprintf("volte:models:events:trees:%d", eventID), commitmentsTreeBytes, 10*time.Second,
 	); err != nil {
 		slog.Error(fmt.Sprintf("Failed to store commitments for event %s, err : %s", event.ID, err.Error()))
 	}

@@ -18,10 +18,20 @@ var (
 	redisDB       = flag.Int("redisDB", 0, "Redis db")
 )
 
-var redisClient *redis.Client
+type RedisClientProvider struct {
+	RedisClient *redis.Client
+}
 
-func InitRDB() {
-	redisClient = redis.NewClient(&redis.Options{
+func (r RedisClientProvider) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+	return r.RedisClient.Set(ctx, key, value, expiration).Err()
+}
+
+func (r RedisClientProvider) Get(ctx context.Context, key string) ([]byte, error) {
+	return r.RedisClient.Get(ctx, key).Bytes()
+}
+
+func NewRedisClientProvider() *RedisClientProvider {
+	redisClient := redis.NewClient(&redis.Options{
 		Addr:     *redisHost + ":" + strconv.Itoa(*redisPort),
 		Username: *redisUsername,
 		Password: *redisPassword,
@@ -34,5 +44,8 @@ func InitRDB() {
 		_ = redisClient.Close()
 		redisClient = nil
 		panic(err)
+	}
+	return &RedisClientProvider{
+		RedisClient: redisClient,
 	}
 }

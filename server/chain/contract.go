@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"log/slog"
+	"math/big"
 	"volte/backend/chain/contracts"
 )
 
@@ -24,14 +26,29 @@ var (
 	contractAddress = flag.String("contract_address", "", "Contract address.")
 )
 
-type EthereumChainHandler struct {
+type VolteSessionHandler interface {
+	SetNullifierMerkleRoot(eventID *big.Int, value []byte) (*types.Transaction, error)
+	SetVoteMerkleRoot(eventID *big.Int, value []byte) (*types.Transaction, error)
+	SetEventHash(eventID *big.Int, value []byte) (*types.Transaction, error)
+	GetNullifierMerkleRoot(eventID *big.Int) ([]byte, error)
+	GetVoteMerkleRoot(eventID *big.Int) ([]byte, error)
+	GetEventHash(eventID *big.Int) ([]byte, error)
+}
+
+type ContractHandler interface {
+	GetClient() *ethclient.Client
+	GetFromAddress() common.Address
+	GetVolteContract() VolteSessionHandler
+}
+
+type EthereumContractHandler struct {
 	client      *ethclient.Client // Ethereum client for RPC communication.
 	fromAddress common.Address    // Server wallet address.
 	// List of contracts.
-	volteContract *contracts.ContractsSession
+	volteContract VolteSessionHandler
 }
 
-func NewEthereumChainHandler() *EthereumChainHandler {
+func NewEthereumChainHandler() *EthereumContractHandler {
 	client, err := ethclient.Dial(*chainRpcNodeUrl)
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to Dial chain rpc node. err : %s", err))
@@ -44,16 +61,16 @@ func NewEthereumChainHandler() *EthereumChainHandler {
 		panic(err)
 	}
 	fromAddress := crypto.PubkeyToAddress(privateKey.PublicKey)
-	volteContract, err := contracts.NewContracts(common.HexToAddress(*contractAddress), client)
+	volteContract, err := contracts.NewVolte(common.HexToAddress(*contractAddress), client)
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to create contract. err : %s", err))
 		panic(err)
 	}
 
-	return &EthereumChainHandler{
+	return &EthereumContractHandler{
 		client:      client,
 		fromAddress: fromAddress,
-		volteContract: &contracts.ContractsSession{
+		volteContract: &contracts.VolteSession{
 			Contract: volteContract,
 			CallOpts: bind.CallOpts{
 				From:    fromAddress,
@@ -64,6 +81,14 @@ func NewEthereumChainHandler() *EthereumChainHandler {
 	}
 }
 
-func (e *EthereumChainHandler) GetVolteContract() *contracts.ContractsSession {
+func (e *EthereumContractHandler) GetVolteContract() VolteSessionHandler {
 	return e.volteContract
+}
+
+func (e *EthereumContractHandler) GetClient() *ethclient.Client {
+	return e.client
+}
+
+func (e *EthereumContractHandler) GetFromAddress() common.Address {
+	return e.fromAddress
 }
