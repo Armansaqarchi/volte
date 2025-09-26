@@ -1,0 +1,17 @@
+sequenceDiagram
+    participant Admin
+    participant Server
+    participant SmartContract
+    participant Developers
+
+    Developers->>Developers: 1. One-Time: Create ZK-Circuit & Groth16 Keys
+
+    Admin->>Server: 2. Create Event (with full voter list)
+
+    Server->>Server: 3. Build Merkle Tree from voter list
+
+    Server->>SmartContract: 4. Register Event (eventDetails, merkleRoot)
+
+    SmartContract-->>Server: 5. Event Registered
+
+    Server-->>Admin: 6. Event Created & Finalized

@@ -1,0 +1,2 @@
+solc --abi --bin ./contracts/volte.sol -o ./contracts/build --overwrite
+abigen --bin=./contracts/build/VolteContract.bin --abi=./contracts/build/VolteContract.abi --pkg=contracts --out=./server/chain/contracts/contract.go --type=volte

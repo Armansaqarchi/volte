@@ -10,10 +10,10 @@ contract VolteContract {
 
     }
 
-    mapping (uint /* eventID */ => bytes /* NullifierRootHash */) public nullifierMerkleRoots;
-    mapping (uint /* eventID */ => bytes /* VoteRootHash */) public voteMerkleRoots;
-    mapping (uint /* eventID */ => bytes /* EventDetailsHash */) public eventHashes;
-    mapping (uint /* eventID */ => bytes[] /* UsedNullifiers */) public usedNullifiers;
+    mapping (string /* eventID */ => bytes /* NullifierRootHash */) public nullifierMerkleRoots;
+    mapping (string /* eventID */ => bytes /* VoteRootHash */) public voteMerkleRoots;
+    mapping (string /* eventID */ => bytes /* EventDetailsHash */) public eventHashes;
+    mapping (string /* eventID */ => bytes /* UsedNullifiers */) public usedNullifiers;
 
 //    function verifyNullifierProof() external {
 //        // verifies nullifier proof given a leaf hash and set of
@@ -34,30 +34,30 @@ contract VolteContract {
     }
 
 
-    function SetNullifierMerkleRoot(uint eventID, bytes calldata value) onlyOwner external {
+    function SetNullifierMerkleRoot(string calldata eventID, bytes calldata value) onlyOwner external {
         //check before to make sure its a valid hash
        nullifierMerkleRoots[eventID] = value;
     }
 
-    function SetVoteMerkleRoot(uint eventID, bytes calldata value) onlyOwner external {
+    function SetVoteMerkleRoot(string calldata eventID, bytes calldata value) onlyOwner external {
         // check before to make sure its a valid hash
         voteMerkleRoots[eventID] = value;
     }
 
-    function SetEventHash(uint eventID, bytes calldata value) onlyOwner external {
+    function SetEventHash(string calldata eventID, bytes calldata value) onlyOwner external {
         // A change in event details changes the event hash completely.
         eventHashes[eventID] = value;
     }
 
-    function GetNullifierMerkleRoot(uint eventID) external view returns (bytes memory) {
+    function GetNullifierMerkleRoot(string calldata eventID) external view returns (bytes memory) {
         return nullifierMerkleRoots[eventID];
     }
 
-    function GetVoteMerkleRoot(uint eventID) external view returns (bytes memory) {
+    function GetVoteMerkleRoot(string calldata eventID) external view returns (bytes memory) {
         return voteMerkleRoots[eventID];
     }
 
-    function GetEventHash(uint eventID) external view returns (bytes memory) {
+    function GetEventHash(string calldata eventID) external view returns (bytes memory) {
         return eventHashes[eventID];
     }
 

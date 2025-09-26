@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"log/slog"
-	"math/big"
 	"volte/backend/chain/contracts"
 )
 
@@ -27,12 +26,12 @@ var (
 )
 
 type VolteSessionHandler interface {
-	SetNullifierMerkleRoot(eventID *big.Int, value []byte) (*types.Transaction, error)
-	SetVoteMerkleRoot(eventID *big.Int, value []byte) (*types.Transaction, error)
-	SetEventHash(eventID *big.Int, value []byte) (*types.Transaction, error)
-	GetNullifierMerkleRoot(eventID *big.Int) ([]byte, error)
-	GetVoteMerkleRoot(eventID *big.Int) ([]byte, error)
-	GetEventHash(eventID *big.Int) ([]byte, error)
+	SetNullifierMerkleRoot(eventID string, value []byte) (*types.Transaction, error)
+	SetVoteMerkleRoot(eventID string, value []byte) (*types.Transaction, error)
+	SetEventHash(eventID string, value []byte) (*types.Transaction, error)
+	GetNullifierMerkleRoot(eventID string) ([]byte, error)
+	GetVoteMerkleRoot(eventID string) ([]byte, error)
+	GetEventHash(eventID string) ([]byte, error)
 }
 
 type ContractHandler interface {

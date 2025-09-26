@@ -1,0 +1,43 @@
+sequenceDiagram
+    actor Voter
+    participant Client as User's Client / Wallet
+    participant Server as Application Backend
+    participant Contract as Voting Smart Contract
+
+    Voter->>Client: 1. Initiate Vote ("Candidate A")
+    activate Client
+
+    note over Client: Performs all crypto operations locally:
+    note over Client: a. Constructs Merkle proof of membership
+    note over Client: b. Creates Nullifier & Vote Commitment
+    note over Client: c. Homomorphically encrypts vote -> Ciphertext C
+    note over Client: d. Generates Groth16 proof using all of the above
+
+    Client->>Server: 2. Submit Vote Transaction(proof, publicInputs, ciphertextC)
+    deactivate Client
+    activate Server
+
+    Server->>Server: 3. Basic Validation (e.g., check format)
+    Server->>Contract: 4. Relay Transaction to Blockchain
+    deactivate Server
+    activate Contract
+
+    Contract->>Contract: 5. Verify Groth16 Proof
+    alt Proof is Valid
+        Contract->>Contract: 6. Check Nullifier in on-chain storage
+        alt Nullifier is Unused
+            Contract->>Contract: 7a. Mark Nullifier as used
+            Contract->>Contract: 7b. Add Ciphertext C to homomorphic tally
+            Contract->>Contract: 7c. Store Vote Commitment in Merkle tree
+            Contract-->>Server: 8. Success (Transaction Mined)
+        else Nullifier is Used
+            Contract-->>Server: 8. Failure (Revert: Double Vote)
+        end
+    else Proof is Invalid
+        Contract-->>Server: 8. Failure (Revert: Invalid Proof)
+    end
+    deactivate Contract
+
+    activate Server
+    Server-->>Voter: 9. Vote Submitted Successfully!
+    deactivate Server

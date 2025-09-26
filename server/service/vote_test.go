@@ -4,89 +4,40 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/alicebob/miniredis"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/redis/go-redis/v9"
+	"github.com/txaty/go-merkletree"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
-	"volte/backend/chain"
-	"volte/backend/databases"
+	"time"
+
+	"volte/backend/models"
+	"volte/backend/utils/test"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/assert/v2"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-type FakeVolteSession struct {
-	nullifierMerkleRoots map[string] /* eventID */ []byte /* NullifierRootHash */
-	voteMerkleRoots      map[string] /* eventID */ []byte /* VoteRootHash */
-	eventHashes          map[string] /* eventID */ []byte /* EventDetailsHash */
-	usedNullifiers       map[string] /* eventID */ []byte /* UsedNullifiers */
+func stringPtr(str string) *string {
+	s := new(string)
+	*s = str
+	return s
 }
 
-func NewFakeVolteContract() chain.VolteSessionHandler {
-	return &FakeVolteSession{
-		nullifierMerkleRoots: make(map[string][]byte),
-		voteMerkleRoots:      make(map[string][]byte),
-		eventHashes:          make(map[string][]byte),
-		usedNullifiers:       make(map[string][]byte),
-	}
-}
+func newFakeService(t *testing.T) *VotingService {
+	eventCollection = stringPtr("testEventCollection")
+	commitmentCollection = stringPtr("testCommitmentCollection")
+	database = stringPtr("testDatabase")
 
-func (v *FakeVolteSession) SetNullifierMerkleRoot(eventID *big.Int, value []byte) (*types.Transaction, error) {
-	v.nullifierMerkleRoots[eventID.String()] = value
-	return nil, nil
-}
-func (v *FakeVolteSession) SetVoteMerkleRoot(eventID *big.Int, value []byte) (*types.Transaction, error) {
-	v.voteMerkleRoots[eventID.String()] = value
-	return nil, nil
-}
-func (v *FakeVolteSession) SetEventHash(eventID *big.Int, value []byte) (*types.Transaction, error) {
-	v.eventHashes[eventID.String()] = value
-	return nil, nil
-}
-func (v *FakeVolteSession) GetNullifierMerkleRoot(eventID *big.Int) ([]byte, error) {
-	return v.nullifierMerkleRoots[eventID.String()], nil
-}
-func (v *FakeVolteSession) GetVoteMerkleRoot(eventID *big.Int) ([]byte, error) {
-	return v.voteMerkleRoots[eventID.String()], nil
-}
-func (v *FakeVolteSession) GetEventHash(eventID *big.Int) ([]byte, error) {
-	return v.eventHashes[eventID.String()], nil
-}
-
-type FakeContractManager struct {
-	contractHandler chain.ContractHandler
-}
-
-func NewFakeContractManager() chain.ContractHandler {
-	return &FakeContractManager{
-		contractHandler: NewFakeContractManager(),
-	}
-}
-
-func (cm *FakeContractManager) GetClient() *ethclient.Client {
-	return nil
-}
-func (cm *FakeContractManager) GetFromAddress() common.Address {
-	return common.Address{}
-}
-func (cm *FakeContractManager) GetVolteContract() chain.VolteSessionHandler {
-	return NewFakeVolteContract()
-}
-
-func newFakeService() *VotingService {
-	redisServer := miniredis.NewMiniRedis()
-	redisClient := databases.RedisClientProvider{
-		RedisClient: redis.NewClient(&redis.Options{Addr: redisServer.Addr()}),
-	}
+	test.CreateNewFakeMongoServer(t)
 	return &VotingService{
-		keyValDB:        redisClient,
-		contractHandler: NewFakeContractManager(),
+		mongoClient:     test.NewFakeMongoClient(),
+		contractHandler: test.NewFakeContractManager(),
 		// Add groth16 mocks as well
 	}
 }
@@ -131,19 +82,103 @@ func createFakeGetRequest(baseURL string, routeParams map[string]string,
 }
 
 func TestAddMemberToEvent(t *testing.T) {
-	service := newFakeService()
+	service := newFakeService(t)
+
+	eventId := "2"
+	commitment := "some random commitment"
+
+	event := &models.Event{
+		ID:          eventId,
+		Name:        "test_event",
+		Admin:       "AdminFake",
+		Duration:    time.Hour * 24 * 3,
+		StartTime:   time.Now().Add(-time.Hour * 24 * 1),
+		VoteOptions: make([]string, 0),
+		VoteMembers: make([]string, 0),
+		Tally:       make(map[string]int),
+		Revoked:     false,
+	}
+	eventsCollection := service.mongoClient.GetClient().Database(*database).Collection(*eventCollection)
+	if _, err := eventsCollection.InsertOne(t.Context(), event); err != nil {
+		t.Fatal(err)
+	}
+	_, err := service.contractHandler.GetVolteContract().SetEventHash(event.ID, event.CalculateEventHash())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	ctx, recorder := newTestGinContext()
-	postRequest := createFakePostRequest(t,
-		map[string]interface{}{
-			"event_id": 2,
-		}, "/target",
-	)
+	postRequest := createFakePostRequest(t, map[string]interface{}{}, "/target")
+	ctx.AddParam("event_id", event.ID)
+	ctx.AddParam("commitment", commitment)
 	ctx.Request = postRequest
 	service.AddMemberToEvent(ctx)
-	fmt.Println(recorder.Code)
+	assert.Equal(t, recorder.Code, http.StatusOK)
+	if err := eventsCollection.FindOne(ctx, bson.M{"_id": eventId}).Decode(&event); err != nil {
+
+		slog.Error(fmt.Sprintf("Couldnt find event %s", strconv.FormatInt(eventId, 10)))
+		t.Fatal(err.Error())
+	}
+	assert.Equal(t, event.VoteMembers, []string{commitment})
+	eventHash, err := service.contractHandler.GetVolteContract().GetEventHash(big.NewInt(event.ID))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	assert.Equal(t, event.CalculateEventHash(), eventHash)
 }
 
 func TestStartEvent(t *testing.T) {
+	service := newFakeService(t)
+
+	eventId := "2"
+
+	event := &models.Event{
+		ID:          eventId,
+		Name:        "test_event",
+		Admin:       "AdminFake",
+		Duration:    time.Hour * 24 * 3,
+		VoteOptions: make([]string, 0),
+		VoteMembers: []string{"FakeMember1", "FakeMember2", "FakeMember3", "FakeMember4"},
+		Tally:       make(map[string]int),
+		Revoked:     false,
+	}
+	commitmentsCollection := service.mongoClient.GetClient().Database(*database).Collection(*commitmentCollection)
+	eventsCollection := service.mongoClient.GetClient().Database(*database).Collection(*eventCollection)
+	if _, err := eventsCollection.InsertOne(t.Context(), event); err != nil {
+		t.Fatal(err)
+	}
+	_, err := service.contractHandler.GetVolteContract().SetEventHash(event.ID, event.CalculateEventHash())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, recorder := newTestGinContext()
+	postRequest := createFakePostRequest(t, map[string]interface{}{}, "/target")
+	ctx.AddParam("event_id", event.ID)
+	ctx.Request = postRequest
+	service.StartEvent(ctx)
+	assert.Equal(t, recorder.Code, http.StatusOK)
+
+	eventHash, err := service.contractHandler.GetVolteContract().GetEventHash(event.ID)
+	if err != nil {
+		panic(err)
+	}
+	assert.Equal(t, event.CalculateEventHash(), eventHash)
+	var got models.EventTree
+	if err := commitmentsCollection.FindOne(ctx, bson.M{"_id": eventId}).Decode(&got); err != nil {
+		slog.Error(fmt.Sprintf("Couldnt find event %s", eventId))
+	}
+	var expectedCommitments []merkletree.DataBlock
+	for _, member := range event.VoteMembers {
+		expectedCommitments = append(expectedCommitments, models.Commitment(member))
+	}
+	expectedCommitmentsTree, _ := merkletree.New(
+		&merkletree.Config{Mode: merkletree.ModeProofGenAndTreeBuild}, expectedCommitments,
+	)
+	expected := models.EventTree{ID: eventId, Tree: expectedCommitmentsTree}
+	assert.Equal(t, expected.Tree.Proofs, got.Tree.Proofs)
+	assert.Equal(t, expected.Tree.Root, got.Tree.Root)
+	assert.Equal(t, expected.Tree.Leaves, got.Tree.Leaves)
+	assert.Equal(t, expected.Tree.Nodes, got.Tree.Nodes)
 
 }

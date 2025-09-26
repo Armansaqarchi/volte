@@ -1,0 +1,25 @@
+sequenceDiagram
+    actor EventAdmin as Event Administrator
+    participant Server as Application Backend
+    participant Contract as Event Factory Contract
+
+    EventAdmin->>Server: 1. Create New Event (with voter list)
+    activate Server
+
+    note over Server: a. Gathers all approved voter public keys
+    note over Server: b. Builds the Voter Registry Merkle Tree
+    note over Server: c. Calculates the final Merkle Root
+
+    Server->>Contract: 2. Register New Event(eventDetails, merkleRoot)
+    deactivate Server
+    activate Contract
+
+    Contract->>Contract: 3. Store Event Details & Merkle Root
+    note over Contract: The Merkle root is now the on-chain source of truth for voter eligibility.
+
+    Contract-->>Server: 4. Success (Event Registered)
+    deactivate Contract
+    activate Server
+
+    Server-->>EventAdmin: 5. Event Started Successfully!
+    deactivate Server
