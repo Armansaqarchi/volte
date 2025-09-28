@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"github.com/consensys/gnark/backend/groth16"
 	"log/slog"
+	"volte/backend/crypto/circuits"
 	"volte/backend/crypto/constraintsys"
 )
 
 // Groth16 is a base Groth16 wrapper that corresponding to an R1CS.
 type Groth16 struct {
-	r1cs         constraintsys.VolteR1CS
+	r1cs         constraintsys.R1CS
 	provingKey   groth16.ProvingKey
 	verifyingKey groth16.VerifyingKey
 }
@@ -22,7 +23,7 @@ func (g *Groth16) GetVerifyingKey() groth16.VerifyingKey {
 	return g.verifyingKey
 }
 
-func SetupNewGroth16(constraintSystem constraintsys.VolteR1CS) *Groth16 {
+func SetupNewGroth16(constraintSystem constraintsys.R1CS) *Groth16 {
 	g := new(Groth16)
 	g.r1cs = constraintSystem
 	cs := g.r1cs.Compile()
@@ -40,4 +41,16 @@ func SetupNewGroth16(constraintSystem constraintsys.VolteR1CS) *Groth16 {
 	g.verifyingKey = verifyingKey
 
 	return g
+}
+
+func NewBallotGroth16() *Groth16 {
+	return SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS(new(circuits.BallotCircuit)))
+}
+
+func NewNullifierGroth16() *Groth16 {
+	return SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS(new(circuits.NullifierCircuit)))
+}
+
+func NewMembershipGroth16() *Groth16 {
+	return SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS(new(circuits.MerkleCircuit)))
 }

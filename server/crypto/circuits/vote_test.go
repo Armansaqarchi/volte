@@ -9,8 +9,8 @@ import (
 
 func TestVote(t *testing.T) {
 	assert := test.NewAssert(t)
-	circuit := VoteCircuit{
+	circuit := BallotCircuit{
 		Vote: big.NewInt(40),
 	}
-	assert.SolvingSucceeded(new(VoteCircuit), &circuit)
+	assert.SolvingSucceeded(new(BallotCircuit), &circuit)
 }

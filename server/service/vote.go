@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"volte/backend/chain"
-	"volte/backend/crypto/constraintsys"
 	"volte/backend/crypto/zkproofs"
 	"volte/backend/databases"
 	"volte/backend/models"
@@ -27,31 +26,49 @@ type VotingService struct {
 	mongoClient     *databases.MongoClient
 	contractHandler chain.ContractHandler
 
-	volteGroth16      *zkproofs.Groth16
-	cipherTextGroth16 *zkproofs.Groth16
-	tallyGroth16      *zkproofs.Groth16
+	membershipGroth16 *zkproofs.Groth16
+	nullifierGroth16  *zkproofs.Groth16
+	ballotGroth16     *zkproofs.Groth16
 }
 
-type VoteZKRequest struct {
+// ZKMembershipProof contains zero-knowledge proofs for prover's eligibility.
+// Secret inputs are prefixed with "Secret".
+type ZKMembershipProof struct {
+	Root           []byte   // Tree root hash value, used for verification.
+	SecretLeaf     []byte   // The prover's membership leaf value.
+	SecretSiblings [][]byte // The leaf's parents siblings up to the root.
 }
 
-type VoteRequest struct {
-	// Consists of two dot separated encrypted values C1.C2. See https://eprint.iacr.org/2018/930.pdf
-	CipherText       string `json:"cipher_text"`
-	Nullifier        string `json:"nullifier"`
-	EventID          string `json:"event_id"`
-	MembershipRootID string `json:"membership_root_id"`
+// ZKNullifierProof contains zero-knowledge proofs for verifying correctness of nullifier calculation.
+// Secret inputs are prefixed with "Secret".
+type ZKNullifierProof struct {
+	Nullifier []byte // The nullifier for the event.
+	SecretKey []byte // Secret with which nullifier is created.
+}
+
+// ZKBallotProof contains zero-knowledge proofs to make sure vote is correct and within the specified range.
+// Secret inputs are prefixed with "Secret".
+type ZKBallotProof struct {
+	SecretVote    []byte // The voter's vote.
+	EncryptedVote []byte // Encrypted voter's vote.
+	PublicKey     []byte // The public key with which the vote has been encrypted.
+}
+
+type ZKVoteProofRequest struct {
+	MembershipProof *ZKMembershipProof
+	NullifierProof  *ZKNullifierProof
+	BallotProof     *ZKBallotProof
 }
 
 func NewVotingService(mongoClient *databases.MongoClient, contractManager *chain.EthereumContractHandler) *VotingService {
+
 	return &VotingService{
 		mongoClient:       mongoClient,
 		contractHandler:   contractManager,
-		volteGroth16:      zkproofs.SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS()),
-		cipherTextGroth16: zkproofs.SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS()),
-		tallyGroth16:      zkproofs.SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS()),
+		membershipGroth16: zkproofs.NewMembershipGroth16(),
+		nullifierGroth16:  zkproofs.NewNullifierGroth16(),
+		ballotGroth16:     zkproofs.NewBallotGroth16(),
 	}
-
 }
 
 func (v *VotingService) isEventValid(ctx *gin.Context, event *models.Event) bool {
@@ -240,7 +257,15 @@ func (v *VotingService) RemoveMemberFromEvent(ctx *gin.Context) {
 }
 
 func (v *VotingService) Vote(ctx *gin.Context) {
-	return
+	var proofs ZKVoteProofRequest
+	if err := ctx.Bind(&proofs); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"status":  "failure",
+			"message": fmt.Sprintf("Internal server error. err : %s", err),
+		})
+		return
+	}
+	// vote
 }
 
 //func (v *VotingService) RemoveEvent() {

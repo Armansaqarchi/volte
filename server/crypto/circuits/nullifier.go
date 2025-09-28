@@ -5,13 +5,13 @@ import (
 	"github.com/consensys/gnark/std/hash/poseidon2"
 )
 
-type PoseidonCircuit struct {
+type NullifierCircuit struct {
 	SecretKey frontend.Variable
 	EventID   frontend.Variable `gnark:",public"`
 	Nullifier frontend.Variable `gnark:",public"`
 }
 
-func (c *PoseidonCircuit) Define(api frontend.API) error {
+func (c *NullifierCircuit) Define(api frontend.API) error {
 	// Creating new poseidon hashing circuit.
 	h, err := poseidon2.NewMerkleDamgardHasher(api)
 	if err != nil {
