@@ -1,7 +1,5 @@
 package main
 
-import "fmt"
-
 //func main() {
 //	//r1cs := groth16.NewVolteBLS12377R1CS(10 /* nullifierTreeDepth */)
 //	//cs := r1cs.Compile()
@@ -73,20 +71,20 @@ import "fmt"
 //	return out, nil
 //}
 
-func main() {
-	// Your inputs:
-	// left  = "2201405337893316815918273758681089615279726740723671154548377099132895554651"
-	// right = "20"
-	left := mustElemFromDec("2992998858742992003866448380394208494829972004809173354017382673461872646273")
-	right := mustElemFromDec("3310810034820363091334307352403815617830879962547922857199997655893198882998")
-
-	// If your circuit uses MD (your code does):
-	md, err := poseidon2MD(left, right)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("MD:", md.String())
-}
+//func main() {
+//	// Your inputs:
+//	// left  = "2201405337893316815918273758681089615279726740723671154548377099132895554651"
+//	// right = "20"
+//	left := mustElemFromDec("2992998858742992003866448380394208494829972004809173354017382673461872646273")
+//	right := mustElemFromDec("3310810034820363091334307352403815617830879962547922857199997655893198882998")
+//
+//	// If your circuit uses MD (your code does):
+//	md, err := poseidon2MD(left, right)
+//	if err != nil {
+//		panic(err)
+//	}
+//	fmt.Println("MD:", md.String())
+//}
 
 //func main() {
 //	groth16 := zkproofs.VolteGroth16{}

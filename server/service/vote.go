@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+
 	"volte/backend/chain"
 	"volte/backend/crypto/zkproofs"
 	"volte/backend/databases"
@@ -47,11 +48,13 @@ type ZKNullifierProof struct {
 }
 
 // ZKBallotProof contains zero-knowledge proofs to make sure vote is correct and within the specified range.
-// Secret inputs are prefixed with "Secret".
 type ZKBallotProof struct {
-	SecretVote    []byte // The voter's vote.
-	EncryptedVote []byte // Encrypted voter's vote.
-	PublicKey     []byte // The public key with which the vote has been encrypted.
+	C1 []byte
+	C2 []byte
+	M  []byte
+	G  []byte
+	Y  []byte
+	k  []byte
 }
 
 type ZKVoteProofRequest struct {
@@ -83,7 +86,7 @@ func (v *VotingService) isEventValid(ctx *gin.Context, event *models.Event) bool
 	fmt.Println(event)
 	if !bytes.Equal(eventHash, event.CalculateEventHash()) {
 		slog.Warn(fmt.Sprintf(
-			"inconsistent event hash between chain and server for event : %d. Expected : %s, got: %s",
+			"inconsistent event hash between chain and server for event : %s. Expected : %s, got: %s",
 			event.ID, event.CalculateEventHash(), eventHash),
 		)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
@@ -265,21 +268,6 @@ func (v *VotingService) Vote(ctx *gin.Context) {
 		})
 		return
 	}
-	// vote
-}
 
-//func (v *VotingService) RemoveEvent() {
-//	// Check is owner
-//	// get event id
-//	// remove event from db
-//	// remove event's spec hash from chain
-//}
-//
-//func (v *VotingService) Vote() {
-//	// check authority
-//	// pre-filter invalid votes to reduce gas fee as much as possible
-//	// check nullifier proof (via contract RPC call)
-//	// submit vote value and update incremental merkle tree
-//
-//	// Note: use locking to avoid race condition
-//}
+	// Prepare the request struct contents as inputs to the circuit for verification.
+}
