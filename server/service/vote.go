@@ -32,6 +32,10 @@ type VotingService struct {
 	ballotGroth16     *zkproofs.Groth16
 }
 
+type Point struct {
+	X, Y []byte
+}
+
 // ZKMembershipProof contains zero-knowledge proofs for prover's eligibility.
 // Secret inputs are prefixed with "Secret".
 type ZKMembershipProof struct {
@@ -49,11 +53,9 @@ type ZKNullifierProof struct {
 
 // ZKBallotProof contains zero-knowledge proofs to make sure vote is correct and within the specified range.
 type ZKBallotProof struct {
-	C1 []byte
-	C2 []byte
+	C1 Point
+	C2 Point
 	M  []byte
-	G  []byte
-	Y  []byte
 	k  []byte
 }
 
@@ -106,7 +108,7 @@ func (v *VotingService) AddMemberToEvent(ctx *gin.Context) {
 	if err := eventsCollection.FindOne(ctx, bson.M{"_id": eventId}).Decode(&event); err != nil {
 		slog.Error(fmt.Sprintf("Failed to get event by event_id, err : %s", err.Error()))
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": fmt.Sprintf("No such event %d found", eventId),
+			"message": fmt.Sprintf("No such event %s found", eventId),
 		})
 	}
 

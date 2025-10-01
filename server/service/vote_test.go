@@ -180,5 +180,4 @@ func TestStartEvent(t *testing.T) {
 	assert.Equal(t, expected.Tree.Root, got.Tree.Root)
 	assert.Equal(t, expected.Tree.Leaves, got.Tree.Leaves)
 	assert.Equal(t, expected.Tree.Nodes, got.Tree.Nodes)
-
 }
