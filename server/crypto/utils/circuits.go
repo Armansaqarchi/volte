@@ -1,50 +1,50 @@
 package utils
 
 import (
-	bls12377 "github.com/consensys/gnark-crypto/ecc/bls12-377"
+	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_emulated"
 	"github.com/consensys/gnark/std/math/emulated"
-	"github.com/consensys/gnark/std/math/emulated/emparams"
 	"math/big"
 )
 
-func StringToBLS12377Element(s string) emulated.Element[emulated.BN254Fp] {
+func StringToElement[T emulated.FieldParams](s string) emulated.Element[T] {
 	var z big.Int
 	z.SetString(s, 10)
-	return emulated.ValueOf[emulated.BN254Fp](z)
+	return emulated.ValueOf[T](z)
 }
 
-func G1MulAffine(P *bls12377.G1Affine, s *big.Int) bls12377.G1Affine {
-	var out bls12377.G1Affine
+func G1MulAffine(P *bn254.G1Affine, s *big.Int) bn254.G1Affine {
+	var out bn254.G1Affine
 	out.ScalarMultiplication(P, s)
 	return out
 }
 
-func G1AddAffine(a, b *bls12377.G1Affine) bls12377.G1Affine {
-	var out bls12377.G1Affine
+func G1AddAffine(a, b *bn254.G1Affine) bn254.G1Affine {
+	var out bn254.G1Affine
 	out.Add(a, b)
 	return out
 }
 
-func GenerateBaseECC() bls12377.G1Affine {
-	_, _, g1, _ := bls12377.Generators()
+func GenerateBaseECC() bn254.G1Affine {
+	_, _, g1, _ := bn254.Generators()
 	return g1
 }
 
-func ECCToAffinePoint(p bls12377.G1Affine) *sw_emulated.AffinePoint[emulated.BN254Fp] {
+func ECCToAffinePoint(p bn254.G1Affine) sw_emulated.AffinePoint[emulated.BN254Fp] {
+	var xb, yb big.Int
+	p.X.BigInt(&xb)
+	p.Y.BigInt(&yb)
 
-	// Converting Generator base point coordinates into big.Int
-	var Xb, Yb big.Int
-	p.X.BigInt(&Xb)
-	p.Y.BigInt(&Yb)
-	// Constructing AffinePoint based on G coordinates
-	return &sw_emulated.AffinePoint[emulated.BN254Fp]{
-		X: emulated.ValueOf[emparams.BN254Fp](p.X),
-		Y: emulated.ValueOf[emparams.BN254Fp](p.Y),
+	return sw_emulated.AffinePoint[emulated.BN254Fp]{
+		X: emulated.ValueOf[emulated.BN254Fp](&xb),
+		Y: emulated.ValueOf[emulated.BN254Fp](&yb),
 	}
 }
 
-func ValFr(bi *big.Int) *emulated.Element[emulated.BN254Fp] {
-	fr := emulated.ValueOf[emparams.BN254Fp](bi)
-	return &fr
+func AssertOnCurve(fp *emulated.Field[emulated.BN254Fp], P *sw_emulated.AffinePoint[emulated.BN254Fp]) {
+	x2 := fp.Mul(&P.X, &P.X)
+	x3 := fp.Mul(x2, &P.X)
+	rhs := fp.Add(x3, fp.NewElement(3)) // BN254: y^2 = x^3 + 3
+	lhs := fp.Mul(&P.Y, &P.Y)
+	fp.AssertIsEqual(lhs, rhs)
 }

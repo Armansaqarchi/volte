@@ -3,6 +3,7 @@ package zkproofs
 import (
 	"fmt"
 	"github.com/consensys/gnark/backend/groth16"
+	"github.com/consensys/gnark/frontend"
 	"log/slog"
 	"volte/backend/crypto/circuits"
 	"volte/backend/crypto/constraintsys"
@@ -44,13 +45,17 @@ func SetupNewGroth16(constraintSystem constraintsys.R1CS) *Groth16 {
 }
 
 func NewBallotGroth16() *Groth16 {
-	return SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS(new(circuits.BallotCircuit)))
+	return SetupNewGroth16(constraintsys.NewVolteBN254R1CS(new(circuits.BallotCircuit)))
 }
 
 func NewNullifierGroth16() *Groth16 {
 	return SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS(new(circuits.NullifierCircuit)))
 }
 
-func NewMembershipGroth16() *Groth16 {
-	return SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS(new(circuits.MerkleCircuit)))
+func NewMembershipGroth16(len int) *Groth16 {
+	// Length of arrays for this circuit are dynamic, so proving key and verifying key varies between other events.
+	return SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS(&circuits.MerkleCircuit{
+		MerklePath:    make([]frontend.Variable, len),
+		PathPositions: make([]frontend.Variable, len),
+	}))
 }

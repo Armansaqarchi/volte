@@ -20,6 +20,13 @@ type volteR1CS struct {
 	field            ecc.ID
 }
 
+func NewVolteBN254R1CS(circuit frontend.Circuit) R1CS {
+	return &volteR1CS{
+		circuit: circuit,
+		field:   ecc.BN254,
+	}
+}
+
 func NewVolteBLS12377R1CS(circuit frontend.Circuit) R1CS {
 	return &volteR1CS{
 		circuit: circuit,
@@ -32,7 +39,7 @@ func (v *volteR1CS) GetConstraintSystem() constraint.ConstraintSystem {
 }
 
 func (v *volteR1CS) Compile() constraint.ConstraintSystem {
-	css, err := frontend.Compile(ecc.BLS12_377.ScalarField(), r1cs.NewBuilder, v.circuit)
+	css, err := frontend.Compile(v.field.ScalarField(), r1cs.NewBuilder, v.circuit)
 	v.constraintSystem = css
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to compile volte R1CS. err : %s", err))
