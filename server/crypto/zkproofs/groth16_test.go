@@ -25,6 +25,7 @@ func TestBallotCircuitProof(t *testing.T) {
 	flag.Set("Gy", G.Y.String())
 	flag.Set("Yx", Y.X.String())
 	flag.Set("Yy", Y.Y.String())
+
 	flag.Parse()
 
 	k := big.NewInt(13220)

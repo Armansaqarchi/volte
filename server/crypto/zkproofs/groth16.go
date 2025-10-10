@@ -28,6 +28,9 @@ func SetupNewGroth16(constraintSystem constraintsys.R1CS) *Groth16 {
 	g := new(Groth16)
 	g.r1cs = constraintSystem
 	cs := g.r1cs.Compile()
+
+	fmt.Println(cs.GetNbPublicVariables())
+
 	slog.Info("Successfully compiled the volte circuit.")
 	slog.Info(fmt.Sprintf("Number of public variables in the circuit : %d", cs.GetNbPublicVariables()))
 	slog.Info(fmt.Sprintf("Number of secret variables in the circuit : %d", cs.GetNbSecretVariables()))
@@ -49,12 +52,12 @@ func NewBallotGroth16() *Groth16 {
 }
 
 func NewNullifierGroth16() *Groth16 {
-	return SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS(new(circuits.NullifierCircuit)))
+	return SetupNewGroth16(constraintsys.NewVolteBN254R1CS(new(circuits.NullifierCircuit)))
 }
 
 func NewMembershipGroth16(len int) *Groth16 {
 	// Length of arrays for this circuit are dynamic, so proving key and verifying key varies between other events.
-	return SetupNewGroth16(constraintsys.NewVolteBLS12377R1CS(&circuits.MerkleCircuit{
+	return SetupNewGroth16(constraintsys.NewVolteBN254R1CS(&circuits.MerkleCircuit{
 		MerklePath:    make([]frontend.Variable, len),
 		PathPositions: make([]frontend.Variable, len),
 	}))

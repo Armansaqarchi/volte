@@ -2,10 +2,10 @@ package circuits
 
 import (
 	"fmt"
+	"github.com/consensys/gnark/std/hash/mimc"
 	"log/slog"
 
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/hash/poseidon2"
 )
 
 type MerkleCircuit struct {
@@ -20,7 +20,7 @@ type MerkleCircuit struct {
 }
 
 func (c *MerkleCircuit) Define(api frontend.API) error {
-	hasher, err := poseidon2.NewMerkleDamgardHasher(api)
+	hasher, err := mimc.NewMiMC(api)
 	if err != nil {
 		slog.Error(fmt.Sprintf("Couldn't instantiate poseidon hash. err : %s", err))
 		panic(err)

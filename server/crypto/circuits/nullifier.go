@@ -2,7 +2,7 @@ package circuits
 
 import (
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/hash/poseidon2"
+	"github.com/consensys/gnark/std/hash/mimc"
 )
 
 type NullifierCircuit struct {
@@ -13,7 +13,7 @@ type NullifierCircuit struct {
 
 func (c *NullifierCircuit) Define(api frontend.API) error {
 	// Creating new poseidon hashing circuit.
-	h, err := poseidon2.NewMerkleDamgardHasher(api)
+	h, err := mimc.NewMiMC(api)
 	if err != nil {
 		return err
 	}

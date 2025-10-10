@@ -1,5 +1,9 @@
 package main
 
+import (
+	"volte/backend/cmd"
+)
+
 //func main() {
 //	//r1cs := groth16.NewVolteBLS12377R1CS(10 /* nullifierTreeDepth */)
 //	//cs := r1cs.Compile()
@@ -128,12 +132,7 @@ package main
 //	return
 //}
 
-//func main() {
-//	flag.Parse()
-//	h := chain.NewEthereumChainHandler()
-//	res, err := h.GetVolteContract().GetEventHash(big.NewInt(2))
-//	if err != nil {
-//		panic(err)
-//	}
-//	fmt.Println(res)
-//}
+func main() {
+
+	cmd.Execute()
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"github.com/consensys/gnark/backend/groth16"
 	"log/slog"
 	"net/http"
 
@@ -36,33 +37,10 @@ type Point struct {
 	X, Y []byte
 }
 
-// ZKMembershipProof contains zero-knowledge proofs for prover's eligibility.
-// Secret inputs are prefixed with "Secret".
-type ZKMembershipProof struct {
-	Root           []byte   // Tree root hash value, used for verification.
-	SecretLeaf     []byte   // The prover's membership leaf value.
-	SecretSiblings [][]byte // The leaf's parents siblings up to the root.
-}
-
-// ZKNullifierProof contains zero-knowledge proofs for verifying correctness of nullifier calculation.
-// Secret inputs are prefixed with "Secret".
-type ZKNullifierProof struct {
-	Nullifier []byte // The nullifier for the event.
-	SecretKey []byte // Secret with which nullifier is created.
-}
-
-// ZKBallotProof contains zero-knowledge proofs to make sure vote is correct and within the specified range.
-type ZKBallotProof struct {
-	C1 Point
-	C2 Point
-	M  []byte
-	k  []byte
-}
-
-type ZKVoteProofRequest struct {
-	MembershipProof *ZKMembershipProof
-	NullifierProof  *ZKNullifierProof
-	BallotProof     *ZKBallotProof
+type ZKProofVoteRequest struct {
+	nullifierProof  	groth16.Proof
+	membershipProof 	groth16.Proof
+	BallotProof     	groth16.Proof
 }
 
 func NewVotingService(mongoClient *databases.MongoClient, contractManager *chain.EthereumContractHandler) *VotingService {
@@ -262,7 +240,7 @@ func (v *VotingService) RemoveMemberFromEvent(ctx *gin.Context) {
 }
 
 func (v *VotingService) Vote(ctx *gin.Context) {
-	var proofs ZKVoteProofRequest
+	var proofs ZKProofVoteRequest
 	if err := ctx.Bind(&proofs); err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"status":  "failure",
@@ -270,6 +248,7 @@ func (v *VotingService) Vote(ctx *gin.Context) {
 		})
 		return
 	}
+	v.contractHandler.
 
 	// Prepare the request struct contents as inputs to the circuit for verification.
 }

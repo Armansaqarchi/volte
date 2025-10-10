@@ -48,3 +48,29 @@ func AssertOnCurve(fp *emulated.Field[emulated.BN254Fp], P *sw_emulated.AffinePo
 	lhs := fp.Mul(&P.Y, &P.Y)
 	fp.AssertIsEqual(lhs, rhs)
 }
+
+// Split big.Int x into 4 little-endian 64-bit limbs.
+func splitLE64(x *big.Int) [4]*big.Int {
+	var two64 = new(big.Int).Lsh(big.NewInt(1), 64)                       // 2^64
+	var mask64 = new(big.Int).Sub(new(big.Int).Set(two64), big.NewInt(1)) // 2^64-1
+
+	t := new(big.Int).Set(x) // don't mutate caller's x
+	var out [4]*big.Int
+	for i := 0; i < 4; i++ {
+		out[i] = new(big.Int).And(t, mask64) // limb i
+		t.Rsh(t, 64)                         // x >>= 64
+	}
+	return out
+}
+
+// Recompose limbs -> big.Int (useful for sanity checks)
+func joinLE64(limbs [4]*big.Int) *big.Int {
+	acc := new(big.Int).Set(limbs[3])
+	acc.Lsh(acc, 64)
+	acc.Add(acc, limbs[2])
+	acc.Lsh(acc, 64)
+	acc.Add(acc, limbs[1])
+	acc.Lsh(acc, 64)
+	acc.Add(acc, limbs[0])
+	return acc
+}

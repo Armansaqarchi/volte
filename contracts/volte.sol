@@ -7,7 +7,6 @@ contract VolteContract {
 
     constructor() {
         admin = msg.sender;
-
     }
 
     mapping (string /* eventID */ => bytes /* NullifierRootHash */) public nullifierMerkleRoots;
@@ -15,18 +14,21 @@ contract VolteContract {
     mapping (string /* eventID */ => bytes /* EventDetailsHash */) public eventHashes;
     mapping (string /* eventID */ => bytes /* UsedNullifiers */) public usedNullifiers;
 
-//    function verifyNullifierProof() external {
-//        // verifies nullifier proof given a leaf hash and set of
-//        // siblings hash corresponding to the leafs path up to the root.
-//
-//        // Match the calculated root against rootHash in `nullifierMerkleRoots`
-//
-//    }
-//
-//
-//    function verifyEncodedCipherText() external{
-//
-//    }
+    function verifyNullifierProof() internal {
+        // verifies nullifier proof given a leaf hash and set of
+        // siblings hash corresponding to the leafs path up to the root.
+
+        // Match the calculated root against rootHash in `nullifierMerkleRoots`
+
+    }
+
+    function verifyBallotProof() internal{
+
+    }
+
+    function verifyMembershipProof() internal{
+
+    }
 
     modifier onlyOwner() {
         require(msg.sender == admin, "Only owner is allowed to execute this transaction.");
@@ -59,6 +61,10 @@ contract VolteContract {
 
     function GetEventHash(string calldata eventID) external view returns (bytes memory) {
         return eventHashes[eventID];
+    }
+
+    function Vote(string calldata eventID) external returns (bool ){
+        return false;
     }
 
 }
