@@ -22,7 +22,7 @@ const config: HardhatUserConfig = {
     },
   },
   paths: {
-    sources: "../groth16/"
+    sources: "./contracts"
   },
   networks: {
     hardhatMainnet: {

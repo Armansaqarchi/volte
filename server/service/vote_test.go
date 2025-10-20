@@ -181,3 +181,8 @@ func TestStartEvent(t *testing.T) {
 	assert.Equal(t, expected.Tree.Leaves, got.Tree.Leaves)
 	assert.Equal(t, expected.Tree.Nodes, got.Tree.Nodes)
 }
+
+func TestVotingService_Vote(t *testing.T) {
+	service := newFakeService(t)
+	
+}

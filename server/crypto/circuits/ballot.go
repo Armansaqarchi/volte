@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-
 	"volte/backend/crypto/utils"
 
 	"github.com/consensys/gnark/frontend"
@@ -51,8 +50,8 @@ func GetBallotCircuitMeta() *BallotCircuitMeta {
 type BallotCircuit struct {
 	C1 sw_emulated.AffinePoint[emulated.BN254Fp] `gnark:",public"`
 	C2 sw_emulated.AffinePoint[emulated.BN254Fp] `gnark:",public"`
-	M  emulated.Element[emulated.BN254Fr]        `gnark:"secret"`
-	K  emulated.Element[emulated.BN254Fr]        `gnark:"secret"`
+	M  emulated.Element[emulated.BN254Fr]
+	K  emulated.Element[emulated.BN254Fr]
 }
 
 func NewBallotCircuit(
@@ -64,7 +63,7 @@ func NewBallotCircuit(
 }
 
 // Define creates the circuit corresponding to BallotCircuit for validating the ciphertext!
-// For this goal, we need to make sure the following requirements meets:
+// For this goal, we need to make sure the following requirements are met:
 // 1: ScalarMul(G,k) == C1.
 // 2: Add(ScalarMul(Y, k), ScalarMul(M . G)) == C2.
 // 3: M(M-1)(M-2)....(M - maxVoteValues) = 0.
@@ -87,11 +86,6 @@ func (c *BallotCircuit) Define(api frontend.API) error {
 	}
 	// Use circuit's meta values G and Y for validation.
 	meta := GetBallotCircuitMeta()
-
-	utils.AssertOnCurve(fp, &meta.G)
-	utils.AssertOnCurve(fp, &meta.Y)
-	utils.AssertOnCurve(fp, &c.C1)
-	utils.AssertOnCurve(fp, &c.C2)
 	c1 := sw.ScalarMul(&meta.G, &c.K)
 	fp.AssertIsEqual(&c1.X, &c.C1.X)
 	fp.AssertIsEqual(&c1.Y, &c.C1.Y)

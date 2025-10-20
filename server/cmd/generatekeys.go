@@ -6,8 +6,10 @@ import (
 	"github.com/spf13/pflag"
 	"io"
 	"log"
+	"math/big"
 	"os"
 	"path/filepath"
+	"volte/backend/crypto/utils"
 	"volte/backend/crypto/zkproofs"
 )
 
@@ -23,16 +25,26 @@ func init() {
 
 func runGenerateKeys(_ *cobra.Command, _ []string) {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+
+	G := utils.GenerateBaseECC()
+	x := big.NewInt(30)
+	Y := utils.G1MulAffine(&G, x)
+
+	flag.Set("Gx", G.X.String())
+	flag.Set("Gy", G.Y.String())
+	flag.Set("Yx", Y.X.String())
+	flag.Set("Yy", Y.Y.String())
+
 	flag.Parse()
 	ballotG16 := zkproofs.NewBallotGroth16()
-	nullifierG16 := zkproofs.NewNullifierGroth16()
-	membershipG16 := zkproofs.NewMembershipGroth16(32)
+	//nullifierG16 := zkproofs.NewNullifierGroth16()
+	//membershipG16 := zkproofs.NewMembershipGroth16(8)
 	createFileAndWrite("../keys/groth16/ballot/verifyingKey", ballotG16.GetVerifyingKey())
 	createFileAndWrite("../keys/groth16/ballot/provingKey", ballotG16.GetProvingKey())
-	createFileAndWrite("../keys/groth16/nullifier/verifyingKey", nullifierG16.GetVerifyingKey())
-	createFileAndWrite("../keys/groth16/nullifier/provingKey", nullifierG16.GetProvingKey())
-	createFileAndWrite("../keys/groth16/membership/verifyingKey", membershipG16.GetVerifyingKey())
-	createFileAndWrite("../keys/groth16/membership/provingKey", membershipG16.GetProvingKey())
+	//createFileAndWrite("../keys/groth16/nullifier/verifyingKey", nullifierG16.GetVerifyingKey())
+	//createFileAndWrite("../keys/groth16/nullifier/provingKey", nullifierG16.GetProvingKey())
+	//createFileAndWrite("../keys/groth16/membership/verifyingKey", membershipG16.GetVerifyingKey())
+	//createFileAndWrite("../keys/groth16/membership/provingKey", membershipG16.GetProvingKey())
 }
 
 func createFileAndWrite(path string, content io.WriterTo) {

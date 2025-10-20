@@ -25,6 +25,36 @@ var (
 	contractAddress = flag.String("contract_address", "", "Contract address.")
 )
 
+type Proof struct {
+	Arx  []byte `json:"arx"`
+	Ary  []byte `json:"ary"`
+	Brx0 []byte `json:"brx0"`
+	Brx1 []byte `json:"brx1"`
+	Bry0 []byte `json:"bry0"`
+	Bry1 []byte `json:"bry1"`
+	Cx   []byte `json:"cx"`
+	Cy   []byte `json:"cy"`
+}
+
+type BallotProof struct {
+	Proof          Proof
+	Input          [16][]byte
+	CommitmentX    []byte
+	CommitmentY    []byte
+	CommitmentPokX []byte
+	CommitmentPokY []byte
+}
+
+type MembershipProof struct {
+	Proof Proof
+	Input [2][]byte
+}
+
+type NullifierProof struct {
+	Proof Proof
+	Input [2][]byte
+}
+
 type VolteSessionHandler interface {
 	SetNullifierMerkleRoot(eventID string, value []byte) (*types.Transaction, error)
 	SetVoteMerkleRoot(eventID string, value []byte) (*types.Transaction, error)
@@ -38,6 +68,7 @@ type ContractHandler interface {
 	GetClient() *ethclient.Client
 	GetFromAddress() common.Address
 	GetVolteContract() VolteSessionHandler
+	VerifyAndSubmitVote(ballotProof *BallotProof, membershipProof *MembershipProof, nullifierProof *NullifierProof) error
 }
 
 type EthereumContractHandler struct {
@@ -90,4 +121,9 @@ func (e *EthereumContractHandler) GetClient() *ethclient.Client {
 
 func (e *EthereumContractHandler) GetFromAddress() common.Address {
 	return e.fromAddress
+}
+
+func (e *EthereumContractHandler) VerifyAndSubmitVote(ballotProof *BallotProof,
+	membershipProof *MembershipProof, proof *NullifierProof) error {
+	return nil
 }

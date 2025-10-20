@@ -1,36 +1,129 @@
-import { expect } from "chai";
 import { network } from "hardhat";
+import {BigNumberish} from "ethers";
+import {expect} from "chai";
 
 const { ethers } = await network.connect();
 
-describe("Counter", function () {
-  it("Should emit the Increment event when calling the inc() function", async function () {
-    const counter = await ethers.deployContract("Counter");
 
-    await expect(counter.inc()).to.emit(counter, "Increment").withArgs(1n);
-  });
+describe("Verifier", function () {
+  it("should verify the membership proof", async () => {
+    const Verifier = await ethers.getContractFactory("MembershipVerifier");
+    const verifier = await Verifier.deploy();
+    await verifier.waitForDeployment();
 
-  it("The sum of the Increment events should match the current value", async function () {
-    const counter = await ethers.deployContract("Counter");
-    const deploymentBlockNumber = await ethers.provider.getBlockNumber();
+    const proof = [
+      "218307417371761318217510504769136052452728445114696001036883765377063469724",
+      "20090163883772003059825487989424674536934171275888101565903843320568431785156",
+      "20672981127299851928153146471267540643191282834601289424189154306151666205115",
+      "4172086382342582216562454009513565487757169922717923889675064727095550155749",
+      "17939853704919616285850575439447615788332440851643822120260123931481880196413",
+      "21425700694512897993682652343295206699287853314112930253564539516723211313028",
+      "14912915543876692391392469854197380978673110738187575389273652791900426988366",
+      "11014960880009887574094976234921461537265317658907218783575181959733851237046"
+    ] as const satisfies [
+      BigNumberish, BigNumberish, BigNumberish, BigNumberish,
+      BigNumberish, BigNumberish, BigNumberish, BigNumberish
+    ];
 
-    // run a series of increments
-    for (let i = 1; i <= 10; i++) {
-      await counter.incBy(i);
+
+    const input = [
+      "1445849190805089689712507754685671168673091553372230482406710117687961492369",
+      "4137760094704180852789719500758563423980885922685717827383305955441808899436"
+    ] as const satisfies [BigNumberish, BigNumberish];
+
+    // You didn't commit variables, so use the point-at-infinity for both:
+    // const commitments: [bigint, bigint] = [0n, 0n];
+    // const commitmentPok: [bigint, bigint] = [0n, 0n];
+
+    try{
+      await verifier.verifyProof.staticCall(proof, input)
     }
-
-    const events = await counter.queryFilter(
-      counter.filters.Increment(),
-      deploymentBlockNumber,
-      "latest",
-    );
-
-    // check that the aggregated events match the current value
-    let total = 0n;
-    for (const event of events) {
-      total += event.args.by;
+    catch (e: any) {
+      console.log("error.name =", e.name);
+      throw e
     }
-
-    expect(await counter.x()).to.equal(total);
   });
-});
+  it("should verify the nullifier proof", async () => {
+    const Verifier = await ethers.getContractFactory("NullifierVerifier");
+    const verifier = await Verifier.deploy();
+    await verifier.waitForDeployment();
+
+    const proof = [
+      "19299394707588237889842204045380945831468246783948553771064559703390041220853",
+      "4071137541844626537200040579510633652956775219111126463167504656912249659108",
+      "19151520548966540575565064419782787574054224241906696011061027507795307865775",
+      "9974598127107197347902395079144830182776403908580955216438534257515427271736",
+      "2500492010900186065866422064845897335014621085330341328994588041624033165681",
+      "17660984402210788913374345393465049457076285707709524303644798707434662042479",
+      "10805355095395483666986219112228748527423776665232009971299604346256688772744",
+      "1870504571597614792738126687608435171464683251354744603329741393782069333371"
+    ] as const satisfies [
+      BigNumberish, BigNumberish, BigNumberish, BigNumberish,
+      BigNumberish, BigNumberish, BigNumberish, BigNumberish
+    ];
+
+    const input = [
+      "3523196653250260958887739657950671762678466692388251624290163732010351636053",
+      "10858051838952645709440492871522823286939885463470476254383445187743108776413"
+    ] as const satisfies [BigNumberish, BigNumberish];
+
+    // You didn't commit variables, so use the point-at-infinity for both:
+    // const commitments: [bigint, bigint] = [0n, 0n];
+    // const commitmentPok: [bigint, bigint] = [0n, 0n];
+
+    try{
+      await verifier.verifyProof.staticCall(proof, input)
+    }
+    catch (e: any) {
+      console.log("error.name =", e.name);
+      throw e
+    }
+  });
+  it("should verify the ballot proof", async () => {
+    const Verifier = await ethers.getContractFactory("BallotVerifier");
+    const verifier = await Verifier.deploy();
+    await verifier.waitForDeployment();
+
+    const proof = [
+      "18170799973635857261294822456123490767858300849315309338461975281292057361897",
+      "14244284926918058364760444392977669585174379885827289936114452693528992997163",
+      "8205706887668846080512646517510214276711411686303786932562449557988537815781",
+      "12990447600059071286245895009349311798673194421436131053870023739348184059458",
+      "9671061850765303257270787633253906737828422360121872275518493683153384565306",
+      "21221193920824920418096999215436075741166768735025429467622161681613828356068",
+      "1517193873151208544848678992355534033633141954616508000290254744282263078371",
+      "528379084656834411015156790430078756051847835499804695870892096254824837298"
+    ] as const satisfies [
+      BigNumberish, BigNumberish, BigNumberish, BigNumberish,
+      BigNumberish, BigNumberish, BigNumberish, BigNumberish
+    ];
+
+    const input = [
+      "16068448641403006952","11401819955764306896","14034514348447911692","1161599979058448361",
+      "11848544127381919838","10110847344335578921","13360974023958266782","571327339866239689",
+      "14145516526586811472","6909929774512124840","8889541373244783464","1339997705979671789",
+      "3157877771170468305","16144328623067908114","10722905077406537962","2404946929832722734"
+    ] as const satisfies BigNumberish[];
+
+    const commitments= [
+      "9157316909797196729284159350080547527003504213246209792610856577653016457815",
+      "10977044080192009214233157132198410281161392619246670423037870656121352481613"
+    ] as const satisfies [
+      BigNumberish, BigNumberish
+    ]
+    const commitmentPok = [
+      "94186758941001159818991885158478630669303642981805140890713727155036236730",
+      "7757756877188287045888631358520676915214476184722814968395082837614480348173"
+    ] as const satisfies [
+      BigNumberish, BigNumberish
+    ]
+
+    try{
+      await verifier.verifyProof.staticCall(proof, commitments, commitmentPok, input)
+    }
+    catch (e: any) {
+      console.log("error.name =", e.name);
+      throw e
+    }
+  }
+)});

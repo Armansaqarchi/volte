@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/consensys/gnark/backend/groth16"
 	"log/slog"
 	"net/http"
 
@@ -33,14 +32,10 @@ type VotingService struct {
 	ballotGroth16     *zkproofs.Groth16
 }
 
-type Point struct {
-	X, Y []byte
-}
-
-type ZKProofVoteRequest struct {
-	nullifierProof  	groth16.Proof
-	membershipProof 	groth16.Proof
-	BallotProof     	groth16.Proof
+type ProofRequest struct {
+	BallotProof     *chain.BallotProof
+	MembershipProof *chain.MembershipProof
+	NullifierProof  *chain.NullifierProof
 }
 
 func NewVotingService(mongoClient *databases.MongoClient, contractManager *chain.EthereumContractHandler) *VotingService {
@@ -240,7 +235,7 @@ func (v *VotingService) RemoveMemberFromEvent(ctx *gin.Context) {
 }
 
 func (v *VotingService) Vote(ctx *gin.Context) {
-	var proofs ZKProofVoteRequest
+	var proofs ProofRequest
 	if err := ctx.Bind(&proofs); err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"status":  "failure",
@@ -248,7 +243,10 @@ func (v *VotingService) Vote(ctx *gin.Context) {
 		})
 		return
 	}
-	v.contractHandler.
-
-	// Prepare the request struct contents as inputs to the circuit for verification.
+	if err := v.contractHandler.VerifyAndSubmitVote(proofs.BallotProof, proofs.MembershipProof, proofs.NullifierProof); err != nil {
+		slog.Error(fmt.Sprintf("Failed to verify vote, err : %s", err.Error()))
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"status": "failure",
+		})
+	}
 }
