@@ -1,10 +1,16 @@
 package utils
 
 import (
+	"fmt"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
+	"github.com/consensys/gnark/backend/groth16"
+	bn254_groth16 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_emulated"
 	"github.com/consensys/gnark/std/math/emulated"
+	"io"
+	"log/slog"
 	"math/big"
+	"os"
 )
 
 func StringToElement[T emulated.FieldParams](s string) emulated.Element[T] {
@@ -41,36 +47,49 @@ func ECCToAffinePoint(p bn254.G1Affine) sw_emulated.AffinePoint[emulated.BN254Fp
 	}
 }
 
-func AssertOnCurve(fp *emulated.Field[emulated.BN254Fp], P *sw_emulated.AffinePoint[emulated.BN254Fp]) {
-	x2 := fp.Mul(&P.X, &P.X)
-	x3 := fp.Mul(x2, &P.X)
-	rhs := fp.Add(x3, fp.NewElement(3)) // BN254: y^2 = x^3 + 3
-	lhs := fp.Mul(&P.Y, &P.Y)
-	fp.AssertIsEqual(lhs, rhs)
-}
-
-// Split big.Int x into 4 little-endian 64-bit limbs.
-func splitLE64(x *big.Int) [4]*big.Int {
-	var two64 = new(big.Int).Lsh(big.NewInt(1), 64)                       // 2^64
-	var mask64 = new(big.Int).Sub(new(big.Int).Set(two64), big.NewInt(1)) // 2^64-1
-
-	t := new(big.Int).Set(x) // don't mutate caller's x
-	var out [4]*big.Int
-	for i := 0; i < 4; i++ {
-		out[i] = new(big.Int).And(t, mask64) // limb i
-		t.Rsh(t, 64)                         // x >>= 64
+func GetCircuitKeys(basePath string) (io.Reader, io.Reader) {
+	pkFile, err := os.Open(fmt.Sprintf("%s/provingKey", basePath))
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to generate pkFile, err : %s", err))
+		panic(err)
 	}
-	return out
+	vkFile, err := os.Open(fmt.Sprintf("%s/verifyingKey", basePath))
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to generate vkFile, err : %s", err))
+		panic(err)
+	}
+
+	return vkFile, pkFile
 }
 
-// Recompose limbs -> big.Int (useful for sanity checks)
-func joinLE64(limbs [4]*big.Int) *big.Int {
-	acc := new(big.Int).Set(limbs[3])
-	acc.Lsh(acc, 64)
-	acc.Add(acc, limbs[2])
-	acc.Lsh(acc, 64)
-	acc.Add(acc, limbs[1])
-	acc.Lsh(acc, 64)
-	acc.Add(acc, limbs[0])
-	return acc
+func ExtractProof(proof groth16.Proof) ([]*big.Int, error) {
+	bn254Proof, _ := proof.(*bn254_groth16.Proof)
+
+	ax := new(big.Int).SetBytes(bn254Proof.Ar.X.Marshal())
+	ay := new(big.Int).SetBytes(bn254Proof.Ar.Y.Marshal())
+
+	// B (G2) in gnark order: (real, imag)
+	bx0 := new(big.Int).SetBytes(bn254Proof.Bs.X.A0.Marshal()) // x.real (A0)
+	bx1 := new(big.Int).SetBytes(bn254Proof.Bs.X.A1.Marshal()) // x.imag (A1)
+	by0 := new(big.Int).SetBytes(bn254Proof.Bs.Y.A0.Marshal()) // y.real (A0)
+	by1 := new(big.Int).SetBytes(bn254Proof.Bs.Y.A1.Marshal()) // y.imag (A1)
+
+	// C/Krs (G1)
+	cx := new(big.Int).SetBytes(bn254Proof.Krs.X.Marshal())
+	cy := new(big.Int).SetBytes(bn254Proof.Krs.Y.Marshal())
+
+	if len(bn254Proof.Commitments) != 0 {
+		commitmentx := new(big.Int).SetBytes(bn254Proof.Commitments[0].X.Marshal())
+		commitmenty := new(big.Int).SetBytes(bn254Proof.Commitments[0].Y.Marshal())
+		PokCommitmentx := new(big.Int).SetBytes(bn254Proof.CommitmentPok.X.Marshal())
+		PokCommitmenty := new(big.Int).SetBytes(bn254Proof.CommitmentPok.Y.Marshal())
+
+		return []*big.Int{
+			ax, ay, bx1, bx0, by1, by0, cx, cy, commitmentx, commitmenty, PokCommitmentx, PokCommitmenty,
+		}, nil
+	}
+
+	// Return in EIP-197 order for your solidity verifier:
+	// [A.x, A.y, B.x.imag, B.x.real, B.y.imag, B.y.real, C.x, C.y]
+	return []*big.Int{ax, ay, bx1, bx0, by1, by0, cx, cy}, nil
 }

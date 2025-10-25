@@ -10,6 +10,7 @@ import (
 )
 
 type R1CS interface {
+	GetCurve() ecc.ID
 	GetConstraintSystem() constraint.ConstraintSystem
 	Compile() constraint.ConstraintSystem
 }
@@ -46,4 +47,8 @@ func (v *volteR1CS) Compile() constraint.ConstraintSystem {
 		panic(err)
 	}
 	return css
+}
+
+func (v *volteR1CS) GetCurve() ecc.ID {
+	return v.field
 }

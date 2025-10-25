@@ -56,10 +56,9 @@ type NullifierProof struct {
 }
 
 type VolteSessionHandler interface {
-	SetNullifierMerkleRoot(eventID string, value []byte) (*types.Transaction, error)
+	Vote(proof contracts.VolteContractVoteSubmission) error
 	SetVoteMerkleRoot(eventID string, value []byte) (*types.Transaction, error)
 	SetEventHash(eventID string, value []byte) (*types.Transaction, error)
-	GetNullifierMerkleRoot(eventID string) ([]byte, error)
 	GetVoteMerkleRoot(eventID string) ([]byte, error)
 	GetEventHash(eventID string) ([]byte, error)
 }
@@ -68,7 +67,6 @@ type ContractHandler interface {
 	GetClient() *ethclient.Client
 	GetFromAddress() common.Address
 	GetVolteContract() VolteSessionHandler
-	VerifyAndSubmitVote(ballotProof *BallotProof, membershipProof *MembershipProof, nullifierProof *NullifierProof) error
 }
 
 type EthereumContractHandler struct {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"volte/backend/chain/contracts"
 
 	"volte/backend/chain"
 	"volte/backend/crypto/zkproofs"
@@ -32,18 +33,12 @@ type VotingService struct {
 	ballotGroth16     *zkproofs.Groth16
 }
 
-type ProofRequest struct {
-	BallotProof     *chain.BallotProof
-	MembershipProof *chain.MembershipProof
-	NullifierProof  *chain.NullifierProof
-}
-
 func NewVotingService(mongoClient *databases.MongoClient, contractManager *chain.EthereumContractHandler) *VotingService {
 
 	return &VotingService{
 		mongoClient:       mongoClient,
 		contractHandler:   contractManager,
-		membershipGroth16: zkproofs.NewMembershipGroth16(),
+		membershipGroth16: zkproofs.NewMembershipGroth16(8),
 		nullifierGroth16:  zkproofs.NewNullifierGroth16(),
 		ballotGroth16:     zkproofs.NewBallotGroth16(),
 	}
@@ -54,7 +49,7 @@ func (v *VotingService) isEventValid(ctx *gin.Context, event *models.Event) bool
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to get event hash, err : %s", err.Error()))
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": fmt.Sprintf("Failed to get event %d hash", event.ID),
+			"message": fmt.Sprintf("Failed to get event %s hash", event.ID),
 		})
 		return false
 	}
@@ -127,9 +122,9 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 
 	var event models.Event
 	if err := eventsCollection.FindOne(ctx, bson.M{"_id": eventID}).Decode(&event); err != nil {
-		slog.Error(fmt.Sprintf("Failed to get event %d, err : %s", eventID, err.Error()))
+		slog.Error(fmt.Sprintf("Failed to get event %s, err : %s", eventID, err.Error()))
 		ctx.JSON(
-			http.StatusInternalServerError, gin.H{"message": fmt.Sprintf("Failed to fetch event %d", eventID)},
+			http.StatusInternalServerError, gin.H{"message": fmt.Sprintf("Failed to fetch event %s", eventID)},
 		)
 		return
 	}
@@ -142,7 +137,7 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 		slog.Error(fmt.Sprintf("Failed to start event, err : %s", err.Error()))
 		ctx.JSON(
 			http.StatusInternalServerError,
-			gin.H{"message": fmt.Sprintf("Failed to start event, err : %d", event.ID)},
+			gin.H{"message": fmt.Sprintf("Failed to start event, err : %s", event.ID)},
 		)
 		return
 	}
@@ -151,7 +146,7 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 		commitments = append(commitments, models.Commitment(member))
 	}
 	if _, err := eventsCollection.UpdateOne(ctx, bson.M{"_id": event.ID}, bson.M{"$set": event}); err != nil {
-		slog.Error(fmt.Sprintf("Failed to store event %d, err : %s", event.ID, err.Error()))
+		slog.Error(fmt.Sprintf("Failed to store event %s, err : %s", event.ID, err.Error()))
 	}
 	commitmentsTree, err := merkletree.New(&merkletree.Config{Mode: merkletree.ModeProofGenAndTreeBuild}, commitments)
 	if err != nil {
@@ -235,7 +230,7 @@ func (v *VotingService) RemoveMemberFromEvent(ctx *gin.Context) {
 }
 
 func (v *VotingService) Vote(ctx *gin.Context) {
-	var proofs ProofRequest
+	var proofs contracts.VolteContractVoteSubmission
 	if err := ctx.Bind(&proofs); err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"status":  "failure",
@@ -243,10 +238,9 @@ func (v *VotingService) Vote(ctx *gin.Context) {
 		})
 		return
 	}
-	if err := v.contractHandler.VerifyAndSubmitVote(proofs.BallotProof, proofs.MembershipProof, proofs.NullifierProof); err != nil {
+	if err := v.contractHandler.GetVolteContract().Vote(proofs); err != nil {
 		slog.Error(fmt.Sprintf("Failed to verify vote, err : %s", err.Error()))
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"status": "failure",
-		})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"status": "failure"})
 	}
+	ctx.JSON(http.StatusOK, gin.H{"status": "Accepted"})
 }

@@ -125,5 +125,79 @@ describe("Verifier", function () {
       console.log("error.name =", e.name);
       throw e
     }
-  }
-)});
+  });
+  it("should verify the vote", async () => {
+    const [signer] = await ethers.getSigners();
+
+    const Verifier = await ethers.getContractFactory("VolteContract");
+
+    const ballotContract = await ethers.getContractFactory("BallotVerifier")
+    const membershipContract = await ethers.getContractFactory("MembershipVerifier");
+    const nullifierContract = await ethers.getContractFactory("NullifierVerifier");
+
+    const ballot = await ballotContract.deploy()
+    const membership = await membershipContract.deploy()
+    const nullifier = await nullifierContract.deploy()
+
+    await ballot.waitForDeployment()
+    await membership.waitForDeployment()
+    await nullifier.waitForDeployment()
+
+    const verifier = await Verifier.deploy(
+        ballot.getAddress(), membership.getAddress(), nullifier.getAddress()
+    );
+    await verifier.waitForDeployment();
+
+    // Your 8 field proof = [Arx, Ary, Brx0, Brx1, Bry0, Bry1, Cx, Cy]
+    const proof = [
+      "18170799973635857261294822456123490767858300849315309338461975281292057361897",
+      "14244284926918058364760444392977669585174379885827289936114452693528992997163",
+      "8205706887668846080512646517510214276711411686303786932562449557988537815781",
+      "12990447600059071286245895009349311798673194421436131053870023739348184059458",
+      "9671061850765303257270787633253906737828422360121872275518493683153384565306",
+      "21221193920824920418096999215436075741166768735025429467622161681613828356068",
+      "1517193873151208544848678992355534033633141954616508000290254744282263078371",
+      "528379084656834411015156790430078756051847835499804695870892096254824837298"
+    ] as const satisfies [
+      BigNumberish, BigNumberish, BigNumberish, BigNumberish,
+      BigNumberish, BigNumberish, BigNumberish, BigNumberish
+    ];
+
+    const input = [
+      "16068448641403006952","11401819955764306896","14034514348447911692","1161599979058448361",
+      "11848544127381919838","10110847344335578921","13360974023958266782","571327339866239689",
+      "14145516526586811472","6909929774512124840","8889541373244783464","1339997705979671789",
+      "3157877771170468305","16144328623067908114","10722905077406537962","2404946929832722734"
+    ] satisfies BigNumberish[];
+
+
+    // Helper: make a Proof from your 8 numbers
+    const makeProof = (p: readonly BigNumberish[]) => ({
+      Arx:  p[0], Ary:  p[1],
+      Brx1: p[2], Brx0: p[3],
+      Bry1: p[4], Bry0: p[5],
+      Cx:   p[6], Cy:   p[7],
+    });
+    const voteSubmission = {
+      sender: await signer.getAddress(),
+      eventID: "2",
+      proofs: {
+        ballot: {
+          Proof: makeProof(proof),
+          Input: input,
+          CommitmentX: "9157316909797196729284159350080547527003504213246209792610856577653016457815",               // use real values if needed
+          CommitmentY: "10977044080192009214233157132198410281161392619246670423037870656121352481613",
+          CommitmentPokX: "94186758941001159818991885158478630669303642981805140890713727155036236730",
+          CommitmentPokY: "7757756877188287045888631358520676915214476184722814968395082837614480348173",
+        },
+        membership: { Proof: makeProof(Array(8).fill(0)), Input: [
+            0, 0,
+          ] as [BigNumberish, BigNumberish] },
+        nullifier:  { Proof: makeProof(Array(8).fill(0)), Input: [0, 0] as [BigNumberish, BigNumberish]},
+      },
+    };
+
+    // Call the view function with the full struct
+    await verifier.Vote.staticCall(voteSubmission);
+  });}
+);
