@@ -10,6 +10,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"log/slog"
+	"math/big"
+	"strconv"
 	"volte/backend/chain/contracts"
 )
 
@@ -55,8 +57,13 @@ type NullifierProof struct {
 	Input [2][]byte
 }
 
+var (
+	chainID = flag.String("eth_based_network_chain_id", "11155111", "Chain Commitment")
+)
+
 type VolteSessionHandler interface {
-	Vote(proof contracts.VolteContractVoteSubmission) error
+	Vote(proof contracts.VolteContractVoteSubmission) (*types.Transaction, error)
+	GetTallyScore(eventID *big.Int) ([4]*big.Int, error)
 	SetVoteMerkleRoot(eventID string, value []byte) (*types.Transaction, error)
 	SetEventHash(eventID string, value []byte) (*types.Transaction, error)
 	GetVoteMerkleRoot(eventID string) ([]byte, error)
@@ -88,7 +95,16 @@ func NewEthereumChainHandler() *EthereumContractHandler {
 		slog.Error(fmt.Sprintf("Failed to load private key. err : %s", err))
 		panic(err)
 	}
+	ethChainID, err := strconv.ParseInt(*chainID, 10, 64)
+	if err != nil {
+		panic(err)
+	}
 	fromAddress := crypto.PubkeyToAddress(privateKey.PublicKey)
+	transactionOpsAuth, err := bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(ethChainID))
+	if err != nil {
+		slog.Error("Something went wrong while creating auth transaction sign.")
+		panic(err)
+	}
 	volteContract, err := contracts.NewVolte(common.HexToAddress(*contractAddress), client)
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to create contract. err : %s", err))
@@ -102,9 +118,10 @@ func NewEthereumChainHandler() *EthereumContractHandler {
 			Contract: volteContract,
 			CallOpts: bind.CallOpts{
 				From:    fromAddress,
-				Pending: false,
+				Pending: true,
 				Context: context.Background(),
 			},
+			TransactOpts: *transactionOpsAuth,
 		},
 	}
 }

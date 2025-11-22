@@ -11,6 +11,8 @@ import (
 	"time"
 	"volte/backend/chain/contracts"
 	"volte/backend/chain/contracts/ballot"
+	"volte/backend/chain/contracts/membership"
+	"volte/backend/chain/contracts/nullifier"
 
 	"log/slog"
 	"math/big"
@@ -52,11 +54,11 @@ func GetFakeChain() *FakeChain {
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to gain ballot, err : %s", err.Error()))
 	}
-	nullifierContractAddr, _, _, err := ballot.DeployVolte(auth, backend.Client())
+	nullifierContractAddr, _, _, err := nullifier.DeployVolte(auth, backend.Client())
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to gain ballot, err : %s", err.Error()))
 	}
-	membershipContractAddr, _, _, err := ballot.DeployVolte(auth, backend.Client())
+	membershipContractAddr, _, _, err := membership.DeployVolte(auth, backend.Client())
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to gain ballot, err : %s", err.Error()))
 	}

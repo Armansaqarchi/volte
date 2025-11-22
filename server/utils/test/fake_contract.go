@@ -22,7 +22,7 @@ func NewFakeContractHandler() chain.ContractHandler {
 			CallOpts: bind.CallOpts{
 				From: fakeChain.FromAddr,
 				// Don't wait for the transactions to mine, this is intended only for testing comfortability
-				Pending: false,
+				Pending: true,
 				Context: context.Background(),
 			},
 			TransactOpts: *fakeChain.Auth,

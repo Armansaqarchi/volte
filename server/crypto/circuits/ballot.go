@@ -15,11 +15,11 @@ var (
 	maxVoteValues = flag.Int("max_vote_values", 100, "Maximum possible values for vote.")
 	curveParams   = sw_emulated.GetCurveParams[emulated.BN254Fp]()
 	// Gx and Gy are coordinates of generator point G in BN254Fp.
-	Gx = flag.String("Gx", "", "Specifies the x-coordinate of point G.")
-	Gy = flag.String("Gy", "", "Specifies the Y-coordinate of point G.")
+	Gx = flag.String("Gx", "", "Specifies the x-coordinate of EC point G.")
+	Gy = flag.String("Gy", "", "Specifies the Y-coordinate of EC point G.")
 	// Yx and Yy specify coordinates of ecc point Y = x[G] where x is the common secret key in elgamal encryption.
-	Yx = flag.String("Yx", "", "Specifies the x-coordinate of point Y.")
-	Yy = flag.String("Yy", "", "Specifies the Y-coordinate of point Y.")
+	Yx = flag.String("Yx", "", "Specifies the x-coordinate of EC point Y.")
+	Yy = flag.String("Yy", "", "Specifies the Y-coordinate of EC point Y.")
 )
 
 type BallotCircuitMeta struct {

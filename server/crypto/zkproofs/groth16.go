@@ -2,13 +2,48 @@ package zkproofs
 
 import (
 	"fmt"
+	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
+	"github.com/minio/sha256-simd"
 	"io"
 	"log/slog"
 	"volte/backend/crypto/circuits"
 	"volte/backend/crypto/constraintsys"
+	"volte/backend/crypto/utils"
 )
+
+func CreateProof(assignment frontend.Circuit, g16 *Groth16) {
+	fullWitness, err := frontend.NewWitness(assignment, ecc.BN254.ScalarField())
+	if err != nil {
+		slog.Error("new witness failed: %v", err)
+	}
+	slog.Info("Created witness for cs circuit.")
+	pubWitness, err := fullWitness.Public()
+	if err != nil {
+		slog.Error(fmt.Sprintf("failed to extract public inputs from witness, err : %s", err))
+	}
+	proof, err := groth16.Prove(g16.GetR1CSSystem().GetConstraintSystem(), g16.GetProvingKey(), fullWitness, func(config *backend.ProverConfig) error {
+		config.HashToFieldFn = sha256.New()
+		return nil
+	})
+	if err != nil {
+		slog.Error(fmt.Sprintf("failed to generate proof: %v", err))
+		panic(err)
+	}
+	slog.Info("Proof created.")
+	slog.Info("Testing proof.")
+	proofParts, err := utils.ExtractProof(proof)
+	if err != nil {
+		slog.Error(fmt.Sprintf("failed to extract public inputs from witness, err : %s", err))
+	}
+	for _, part := range proofParts {
+		fmt.Println(part.String())
+	}
+	fmt.Println("Generated public inputs:")
+	fmt.Println(pubWitness.Vector())
+}
 
 // Groth16 is a base Groth16 wrapper that corresponding to an R1CS.
 type Groth16 struct {

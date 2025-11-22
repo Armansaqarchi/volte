@@ -116,7 +116,7 @@
         function addCiphertexts(
             uint256[2] memory C1, // [x1, y1]
             uint256[2] memory C2  // [x2, y2]
-        ) public view returns (uint256[2] memory Csum) {
+        ) public returns (uint256[2] memory Csum) {
             bool success;
             assembly ("memory-safe") {
                 let ptr := mload(0x40)
@@ -140,34 +140,34 @@
 
         // No revert means the proof has been verified and the vote has been submitted.
         function Vote(VoteSubmission calldata proof) view external{
-//            nullifierVerifier.verifyProof(
-//                [
-//                    proof.proofs.nullifier.Proof.Arx,
-//                    proof.proofs.nullifier.Proof.Ary,
-//                    // Notice the ordering of B point as the verifier expects them in big-endian order.
-//                    proof.proofs.nullifier.Proof.Brx1,
-//                    proof.proofs.nullifier.Proof.Brx0,
-//                    proof.proofs.nullifier.Proof.Bry1,
-//                    proof.proofs.nullifier.Proof.Bry0,
-//                    proof.proofs.nullifier.Proof.Cx,
-//                    proof.proofs.nullifier.Proof.Cy
-//                ],
-//                proof.proofs.nullifier.Input
-//            );
-//            membershipVerifier.verifyProof(
-//                [
-//                    proof.proofs.membership.Proof.Arx,
-//                    proof.proofs.membership.Proof.Ary,
-//                    // Notice the ordering of B point as the verifier expects them in big-endian order.
-//                    proof.proofs.membership.Proof.Brx1,
-//                    proof.proofs.membership.Proof.Brx0,
-//                    proof.proofs.membership.Proof.Bry1,
-//                    proof.proofs.membership.Proof.Bry0,
-//                    proof.proofs.membership.Proof.Cx,
-//                    proof.proofs.membership.Proof.Cy
-//                ],
-//                proof.proofs.membership.Input
-//            );
+            nullifier.verifyProof(
+                [
+                    proof.proofs.nullifier.Proof.Arx,
+                    proof.proofs.nullifier.Proof.Ary,
+                    // Notice the ordering of B point as the verifier expects them in big-endian order.
+                    proof.proofs.nullifier.Proof.Brx1,
+                    proof.proofs.nullifier.Proof.Brx0,
+                    proof.proofs.nullifier.Proof.Bry1,
+                    proof.proofs.nullifier.Proof.Bry0,
+                    proof.proofs.nullifier.Proof.Cx,
+                    proof.proofs.nullifier.Proof.Cy
+                ],
+                proof.proofs.nullifier.Input
+            );
+            membership.verifyProof(
+                [
+                    proof.proofs.membership.Proof.Arx,
+                    proof.proofs.membership.Proof.Ary,
+                    // Notice the ordering of B point as the verifier expects them in big-endian order.
+                    proof.proofs.membership.Proof.Brx1,
+                    proof.proofs.membership.Proof.Brx0,
+                    proof.proofs.membership.Proof.Bry1,
+                    proof.proofs.membership.Proof.Bry0,
+                    proof.proofs.membership.Proof.Cx,
+                    proof.proofs.membership.Proof.Cy
+                ],
+                proof.proofs.membership.Input
+            );
 
             ballot.verifyProof(
                 [
@@ -185,57 +185,57 @@
                 [proof.proofs.ballot.CommitmentPokX, proof.proofs.ballot.CommitmentPokY],
                 proof.proofs.ballot.Input
             );
-//            // Recombining into 256bit format for each coordination.
-//            uint256 C1x = recombine([
-//                uint64(proof.proofs.ballot.Input[0]),
-//                uint64(proof.proofs.ballot.Input[1]),
-//                uint64(proof.proofs.ballot.Input[2]),
-//                uint64(proof.proofs.ballot.Input[3])
-//            ]);
-//            uint256 C1y = recombine([
-//                uint64(proof.proofs.ballot.Input[4]),
-//                uint64(proof.proofs.ballot.Input[5]),
-//                uint64(proof.proofs.ballot.Input[6]),
-//                uint64(proof.proofs.ballot.Input[7])
-//            ]);
-//            uint256 C2x = recombine([
-//                uint64(proof.proofs.ballot.Input[8]),
-//                uint64(proof.proofs.ballot.Input[9]),
-//                uint64(proof.proofs.ballot.Input[10]),
-//                uint64(proof.proofs.ballot.Input[11])
-//            ]);
-//            uint256 C2y = recombine([
-//                uint64(proof.proofs.ballot.Input[12]),
-//                uint64(proof.proofs.ballot.Input[13]),
-//                uint64(proof.proofs.ballot.Input[14]),
-//                uint64(proof.proofs.ballot.Input[15])
-//            ]);
-//
-//            // Preparing input parameters to perform tally + C.
-//            uint256[2] memory C1 = [C1x, C1y];
-//            uint256[2] memory C2 = [C2x, C2y];
-//            uint256[2] memory tallyC1 = [tallyScore.C1x, tallyScore.C1y];
-//            uint256[2] memory tallyC2 = [tallyScore.C2x, tallyScore.C2y];
-//            uint256[2] memory resultC1 = addCiphertexts(C1, tallyC1);
-//            uint256[2] memory resultC2 = addCiphertexts(C2, tallyC2);
-//
-//            // Update tally score.
-//            tallyScore.C1x = resultC1[0];
-//            tallyScore.C1y = resultC1[1];
-//            tallyScore.C2x = resultC2[0];
-//            tallyScore.C2y = resultC2[1];
+            // Recombining into 256bit format for each coordination.
+            uint256 C1x = recombine([
+                uint64(proof.proofs.ballot.Input[0]),
+                uint64(proof.proofs.ballot.Input[1]),
+                uint64(proof.proofs.ballot.Input[2]),
+                uint64(proof.proofs.ballot.Input[3])
+            ]);
+            uint256 C1y = recombine([
+                uint64(proof.proofs.ballot.Input[4]),
+                uint64(proof.proofs.ballot.Input[5]),
+                uint64(proof.proofs.ballot.Input[6]),
+                uint64(proof.proofs.ballot.Input[7])
+            ]);
+            uint256 C2x = recombine([
+                uint64(proof.proofs.ballot.Input[8]),
+                uint64(proof.proofs.ballot.Input[9]),
+                uint64(proof.proofs.ballot.Input[10]),
+                uint64(proof.proofs.ballot.Input[11])
+            ]);
+            uint256 C2y = recombine([
+                uint64(proof.proofs.ballot.Input[12]),
+                uint64(proof.proofs.ballot.Input[13]),
+                uint64(proof.proofs.ballot.Input[14]),
+                uint64(proof.proofs.ballot.Input[15])
+            ]);
+
+            // Preparing input parameters to perform tally + C.
+            uint256[2] memory C1 = [C1x, C1y];
+            uint256[2] memory C2 = [C2x, C2y];
+            uint256[2] memory tallyC1 = [tallyScore.C1x, tallyScore.C1y];
+            uint256[2] memory tallyC2 = [tallyScore.C2x, tallyScore.C2y];
+            uint256[2] memory resultC1 = addCiphertexts(C1, tallyC1);
+            uint256[2] memory resultC2 = addCiphertexts(C2, tallyC2);
+
+            // Update tally score.
+            tallyScore.C1x = resultC1[0];
+            tallyScore.C1y = resultC1[1];
+            tallyScore.C2x = resultC2[0];
+            tallyScore.C2y = resultC2[1];
         }
 
-//        function recombine(uint64[4] memory limbs) internal pure returns (uint256 x) {
-//
-//            x = uint256(limbs[0])
-//                | (uint256(limbs[1]) << 64)
-//                | (uint256(limbs[2]) << 128)
-//                | (uint256(limbs[3]) << 192);
-//
-//            // reduce modulo P to ensure valid field element
-//            x = addmod(x, 0, P);
-//            return x;
-//        }
+        function recombine(uint64[4] memory limbs) internal pure returns (uint256 x) {
+
+            x = uint256(limbs[0])
+                | (uint256(limbs[1]) << 64)
+                | (uint256(limbs[2]) << 128)
+                | (uint256(limbs[3]) << 192);
+
+            // reduce modulo P to ensure valid field element
+            x = addmod(x, 0, P);
+            return x;
+        }
 
     }

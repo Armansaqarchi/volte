@@ -41,7 +41,7 @@ func NewMongoClientWithConfig(opts *options.ClientOptions) *MongoClient {
 func NewMongoClient() *MongoClient {
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
 	opts := options.Client().ApplyURI(fmt.Sprintf(
-		"mongodb+srv://%s:%s@%s?retryWrites=true&w=majority\n", *username, *password, *host),
+		"mongodb://%s:%s@%s", *username, *password, *host),
 	).SetServerAPIOptions(serverAPI)
 	return NewMongoClientWithConfig(opts)
 }

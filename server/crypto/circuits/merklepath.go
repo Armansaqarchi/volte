@@ -16,7 +16,9 @@ type MerkleCircuit struct {
 	MerklePath []frontend.Variable `gnark:",secret"`
 	// List of bits indicating child position at each index (0 indicates left, 1 indicates right). Without this,
 	// positions can be mistaken and result in wrong hashing.
-	PathPositions []frontend.Variable `gnark:",secret"`
+	PathPositions []frontend.Variable `gnark:",public"`
+	// The user's secret key we check the leaf value against.
+	SecretKey frontend.Variable `gnark:",secret"`
 }
 
 func (c *MerkleCircuit) Define(api frontend.API) error {
@@ -25,6 +27,10 @@ func (c *MerkleCircuit) Define(api frontend.API) error {
 		slog.Error(fmt.Sprintf("Couldn't instantiate poseidon hash. err : %s", err))
 		panic(err)
 	}
+	// Check if secret key matches the user commitment!
+	hasher.Write(c.SecretKey)
+	api.AssertIsEqual(hasher.Sum(), c.LeafValue)
+
 	current := c.LeafValue
 	for i := 0; i < len(c.MerklePath); i++ {
 		sibling := c.MerklePath[i]

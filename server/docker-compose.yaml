@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: docker.arvancloud.ir/mongo:7.0
+    container_name: mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: mongo_pass
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    networks:
+      - backend
+
+volumes:
+  mongo_data:
+  mongo_config:
+
+networks:
+  backend:
+    driver: bridge

@@ -2,46 +2,50 @@ package service
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
-	"log/slog"
-	"net/http"
-	"volte/backend/chain/contracts"
-
-	"volte/backend/chain"
-	"volte/backend/crypto/zkproofs"
-	"volte/backend/databases"
-	"volte/backend/models"
-
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/txaty/go-merkletree"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"log/slog"
+	"math/big"
+	"net/http"
+	"time"
+	"volte/backend/chain"
+	"volte/backend/chain/contracts"
+	"volte/backend/databases"
+	"volte/backend/models"
 )
 
 var (
-	database             = flag.String("event_database", "events", "Database to use")
-	eventCollection      = flag.String("event_collection", "events", "Collection to use")
-	commitmentCollection = flag.String("commitment_collection", "commitments", "Collection to use")
+	database                       = flag.String("event_database", "events", "Database to use")
+	eventCollection                = flag.String("event_collection", "events", "Collection to use")
+	commitmentCollection           = flag.String("commitment_collection", "commitments", "Collection to use")
+	commitmentMerklePathCollection = flag.String(
+		"commitment_merkle_path_collection", "commitment_merkle_path", "Collection to use",
+	)
 )
 
 type VotingService struct {
 	mongoClient     *databases.MongoClient
 	contractHandler chain.ContractHandler
-
-	membershipGroth16 *zkproofs.Groth16
-	nullifierGroth16  *zkproofs.Groth16
-	ballotGroth16     *zkproofs.Groth16
 }
 
-func NewVotingService(mongoClient *databases.MongoClient, contractManager *chain.EthereumContractHandler) *VotingService {
+func NewVotingService(mongoClient *databases.MongoClient, contractManager chain.ContractHandler) *VotingService {
 
 	return &VotingService{
-		mongoClient:       mongoClient,
-		contractHandler:   contractManager,
-		membershipGroth16: zkproofs.NewMembershipGroth16(8),
-		nullifierGroth16:  zkproofs.NewNullifierGroth16(),
-		ballotGroth16:     zkproofs.NewBallotGroth16(),
+		mongoClient:     mongoClient,
+		contractHandler: contractManager,
 	}
+}
+
+func newBigIntFromString(str string) *big.Int {
+	bigInt := big.NewInt(0)
+	bigInt.SetString(str, 10)
+	return bigInt
 }
 
 func (v *VotingService) isEventValid(ctx *gin.Context, event *models.Event) bool {
@@ -53,7 +57,6 @@ func (v *VotingService) isEventValid(ctx *gin.Context, event *models.Event) bool
 		})
 		return false
 	}
-	fmt.Println(event)
 	if !bytes.Equal(eventHash, event.CalculateEventHash()) {
 		slog.Warn(fmt.Sprintf(
 			"inconsistent event hash between chain and server for event : %s. Expected : %s, got: %s",
@@ -67,10 +70,117 @@ func (v *VotingService) isEventValid(ctx *gin.Context, event *models.Event) bool
 	return true
 }
 
+func (v *VotingService) CreateEvent(ctx *gin.Context) {
+	session := sessions.Default(ctx)
+	adminID := session.Get("user")
+
+	if adminID == nil {
+		slog.Warn("Attempt to create event without active session")
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "Unauthorized: user not logged in"})
+		return
+	}
+
+	eventsCollection := v.mongoClient.GetClient().Database(*database).Collection(*eventCollection)
+
+	var req struct {
+		Name        string        `json:"name" binding:"required"`
+		Duration    time.Duration `json:"duration" binding:"required"`
+		VoteOptions []string      `json:"vote_options" binding:"required,min=1"`
+		Question    string        `json:"question" binding:"required"`
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		slog.Error(fmt.Sprintf("Invalid request to create event: %s", err.Error()))
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid input: " + err.Error()})
+		return
+	}
+
+	event := models.Event{
+		ID:          uuid.New().String(),
+		Name:        req.Name,
+		Admin:       adminID.(string),
+		Question:    req.Question,
+		Duration:    req.Duration,
+		StartTime:   nil,
+		VoteOptions: req.VoteOptions,
+		VoteMembers: []string{},
+		Tally:       make(map[string]int),
+		Revoked:     false,
+	}
+
+	if _, err := eventsCollection.InsertOne(ctx, event); err != nil {
+		slog.Error(fmt.Sprintf("Failed to insert event: %s", err.Error()))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to create event"})
+		return
+	}
+	_, err := v.contractHandler.GetVolteContract().SetEventHash(event.ID, event.CalculateEventHash())
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to set event hash on chain, err : %s", err.Error()))
+
+		_, _ = eventsCollection.DeleteOne(ctx, bson.M{"_id": event.ID})
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Event creation failed: could not register hash on blockchain",
+		})
+		return
+	}
+	ctx.JSON(http.StatusCreated, gin.H{
+		"message": "Event successfully created",
+		"event":   event,
+	})
+}
+
+func (v *VotingService) DeleteEvent(ctx *gin.Context) {
+	session := sessions.Default(ctx)
+	adminID := session.Get("user")
+
+	if adminID == nil {
+		slog.Warn("Attempt to delete event without active session")
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "Unauthorized: user not logged in"})
+		return
+	}
+	eventsCollection := v.mongoClient.GetClient().Database(*database).Collection(*eventCollection)
+	eventID := ctx.Param("id")
+
+	var event models.Event
+	if err := eventsCollection.FindOne(ctx, bson.M{"_id": eventID}).Decode(&event); err != nil {
+		slog.Error(fmt.Sprintf("Failed to get event by event_id, err : %s", err.Error()))
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": fmt.Sprintf("No such event %s found", event.ID),
+		})
+	}
+
+	if adminID != event.Admin {
+		ctx.JSON(
+			http.StatusUnauthorized, gin.H{"message": "Unauthorized: user must be admin to perform this operation."},
+		)
+		return
+	}
+
+	if _, err := eventsCollection.DeleteOne(ctx, &bson.M{"_id": eventID}); err != nil {
+		slog.Error(fmt.Sprintf("Failed to delete event: %s", err.Error()))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to delete event"})
+		return
+	}
+	_, err := v.contractHandler.GetVolteContract().SetEventHash(eventID, []byte(""))
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to set event hash on chain, err : %s", err.Error()))
+
+		_, _ = eventsCollection.DeleteOne(ctx, bson.M{"_id": eventID})
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Event creation failed: could not register hash on blockchain",
+		})
+		return
+	}
+	ctx.JSON(http.StatusCreated, gin.H{
+		"message": "Event successfully deleted.",
+		"id":      eventID,
+	})
+}
+
 func (v *VotingService) AddMemberToEvent(ctx *gin.Context) {
 	// Add security step
 	eventsCollection := v.mongoClient.GetClient().Database(*database).Collection(*eventCollection)
-	eventId := ctx.Param("event_id")
+	eventId := ctx.Param("id")
 
 	var event models.Event
 	if err := eventsCollection.FindOne(ctx, bson.M{"_id": eventId}).Decode(&event); err != nil {
@@ -118,8 +228,13 @@ func (v *VotingService) AddMemberToEvent(ctx *gin.Context) {
 func (v *VotingService) StartEvent(ctx *gin.Context) {
 	eventsCollection := v.mongoClient.GetClient().Database(*database).Collection(*eventCollection)
 	commitmentsCollection := v.mongoClient.GetClient().Database(*database).Collection(*commitmentCollection)
-	eventID := ctx.Param("event_id")
-
+	commitmentMerklePathCollection := v.mongoClient.GetClient().Database(
+		*database).Collection(*commitmentMerklePathCollection)
+	eventID := ctx.Param("id")
+	if eventID == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid event_id"})
+		return
+	}
 	var event models.Event
 	if err := eventsCollection.FindOne(ctx, bson.M{"_id": eventID}).Decode(&event); err != nil {
 		slog.Error(fmt.Sprintf("Failed to get event %s, err : %s", eventID, err.Error()))
@@ -128,12 +243,20 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 		)
 		return
 	}
-	if len(event.VoteMembers) <= 1 {
+	session := sessions.Default(ctx)
+	if session.Get("user") != event.Admin {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "Unauthorized: user not logged in"})
+		return
+	}
+
+	if len(event.VoteMembers) < 1 {
 		ctx.JSON(http.StatusForbidden, gin.H{
 			"message": "Total eligible voters must be greater than 1.",
 		})
+		return
 	}
 	if err := event.StartEvent(); err != nil {
+		fmt.Println(err)
 		slog.Error(fmt.Sprintf("Failed to start event, err : %s", err.Error()))
 		ctx.JSON(
 			http.StatusInternalServerError,
@@ -142,14 +265,17 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 		return
 	}
 	var commitments []merkletree.DataBlock
+	commitments = append(commitments, models.Commitment(event.Admin))
 	for _, member := range event.VoteMembers {
 		commitments = append(commitments, models.Commitment(member))
 	}
-	if _, err := eventsCollection.UpdateOne(ctx, bson.M{"_id": event.ID}, bson.M{"$set": event}); err != nil {
-		slog.Error(fmt.Sprintf("Failed to store event %s, err : %s", event.ID, err.Error()))
-	}
 	commitmentsTree, err := merkletree.New(&merkletree.Config{Mode: merkletree.ModeProofGenAndTreeBuild}, commitments)
 	if err != nil {
+		if errors.Is(err, merkletree.ErrInvalidNumOfDataBlocks) {
+			slog.Error(fmt.Sprintf("Failed to create commitments tree, err : %s", err.Error()))
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "Members must be at least 2"})
+			return
+		}
 		slog.Error(fmt.Sprintf("Failed to create commitments tree, err : %s", err.Error()))
 		ctx.JSON(
 			http.StatusInternalServerError, gin.H{"message": fmt.Sprintf("Failed to create commitments tree")},
@@ -157,15 +283,117 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 		return
 	}
 	eventCommitmentTree := &models.EventTree{ID: eventID, Tree: commitmentsTree}
-
+	if _, err := eventsCollection.UpdateOne(ctx, bson.M{"_id": event.ID}, bson.M{"$set": event}); err != nil {
+		slog.Error(fmt.Sprintf("Failed to store event %s, err : %s", event.ID, err.Error()))
+	}
 	if _, err := commitmentsCollection.InsertOne(ctx, eventCommitmentTree); err != nil {
 		slog.Error(fmt.Sprintf("Failed to store commitments for event %s, err : %s", event.ID, err.Error()))
 		ctx.JSON(
 			http.StatusInternalServerError,
 			gin.H{"message": fmt.Sprintf("Failed to store commitments for event %s", event.ID)},
 		)
+		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"message": "Event has started"})
+	if _, err := commitmentMerklePathCollection.InsertOne(ctx, &models.EventTreeProofsDto{
+		ID:      eventID,
+		LeafMap: eventCommitmentTree.Tree.LeafMap,
+		Proofs:  eventCommitmentTree.Tree.Proofs,
+	}); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": fmt.Sprintf("Failed to store commitments for event %s", event.ID),
+		})
+		return
+	}
+	_, err = v.contractHandler.GetVolteContract().SetEventHash(event.ID, event.CalculateEventHash())
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to set event hash, err : %s", err.Error()))
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": fmt.Sprintf("Failed to set event hash on chain"),
+		})
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"message": "Event has started", "start": event.StartTime})
+}
+
+func (v *VotingService) UserEvents(ctx *gin.Context) {
+	session := sessions.Default(ctx)
+	adminID := session.Get("user")
+	eventsCollection := v.mongoClient.GetClient().Database(*database).Collection(*eventCollection)
+	if cur, err := eventsCollection.Find(ctx, bson.M{"admin": adminID}); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": fmt.Sprintf("Failed to fetch commitments for user %s", adminID),
+		})
+		return
+	} else {
+		var events []models.Event
+		if err := cur.All(ctx, &events); err != nil {
+			slog.Error(fmt.Sprintf("Failed to get events, err : %s", err.Error()))
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"message": fmt.Sprintf("failed to decode events, err : %s", err.Error()),
+			})
+			return
+		}
+		ctx.JSON(http.StatusOK, gin.H{
+			"data": events,
+		})
+	}
+}
+
+func (v *VotingService) MembershipDetails(ctx *gin.Context) {
+	session := sessions.Default(ctx)
+	member := models.Commitment(session.Get("user").(string))
+
+	eventId := ctx.Param("id")
+	if eventId == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid event_id"})
+		return
+	}
+	var eventTree models.EventTreeProofsDto
+	commitmentsPathCollection := v.mongoClient.GetClient().Database(*database).Collection(*commitmentMerklePathCollection)
+	if err := commitmentsPathCollection.FindOne(ctx, bson.M{"_id": eventId}).Decode(&eventTree); err != nil {
+		fmt.Println(err)
+		slog.Error(fmt.Sprintf("Couldnt find event %s", eventId))
+	}
+	leafValue, err := member.ToLeafValue()
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": fmt.Sprintf("Failed to convert to leaf value, err : %s", err.Error()),
+		})
+		return
+	}
+	commitmentIdx := eventTree.LeafMap[string(leafValue)]
+	fmt.Println(eventTree.Proofs[commitmentIdx])
+	ctx.JSON(http.StatusOK, gin.H{
+		"data": eventTree.Proofs[commitmentIdx],
+	})
+}
+
+func (v *VotingService) UserEvent(ctx *gin.Context) {
+	session := sessions.Default(ctx)
+	userId := session.Get("user").(string)
+	eventId := ctx.Param("event_id")
+	eventsCollection := v.mongoClient.GetClient().Database(*database).Collection(*eventCollection)
+	if res := eventsCollection.FindOne(ctx, bson.M{
+		"_id": eventId,
+		"$or": []bson.M{{"admin": userId}, {"vote_members": userId}},
+	},
+	); res.Err() != nil {
+		slog.Error(fmt.Sprintf("Failed to fetch event, err : %s", res.Err()))
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": fmt.Sprintf("Failed to fetch commitments for user %s", userId),
+		})
+		return
+	} else {
+		var event models.Event
+		if err := res.Decode(&event); err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"message": fmt.Sprintf("Failed to decode event, err : %s", err.Error()),
+			})
+			return
+		} else {
+			ctx.JSON(http.StatusOK, event)
+		}
+	}
 }
 
 func (v *VotingService) RemoveMemberFromEvent(ctx *gin.Context) {
@@ -238,9 +466,21 @@ func (v *VotingService) Vote(ctx *gin.Context) {
 		})
 		return
 	}
-	if err := v.contractHandler.GetVolteContract().Vote(proofs); err != nil {
+	if _, err := v.contractHandler.GetVolteContract().Vote(proofs); err != nil {
 		slog.Error(fmt.Sprintf("Failed to verify vote, err : %s", err.Error()))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"status": "failure"})
 	}
 	ctx.JSON(http.StatusOK, gin.H{"status": "Accepted"})
+}
+
+func (v *VotingService) GetTallyScore(ctx *gin.Context) {
+	eventID := ctx.Query("eventID")
+
+	id := newBigIntFromString(eventID)
+	scores, err := v.contractHandler.GetVolteContract().GetTallyScore(id)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get tally score"})
+	}
+	ctx.JSON(http.StatusOK, gin.H{"score": scores})
+
 }
