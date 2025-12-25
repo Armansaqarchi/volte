@@ -63,10 +63,11 @@ var (
 
 type VolteSessionHandler interface {
 	Vote(proof contracts.VolteContractVoteSubmission) (*types.Transaction, error)
-	GetTallyScore(eventID *big.Int) ([4]*big.Int, error)
-	SetVoteMerkleRoot(eventID string, value []byte) (*types.Transaction, error)
+	GetTallyScore(eventID string) ([4]*big.Int, error)
+	SetVoteMerkleRoot(eventID string, value *big.Int) (*types.Transaction, error)
 	SetEventHash(eventID string, value []byte) (*types.Transaction, error)
-	GetVoteMerkleRoot(eventID string) ([]byte, error)
+	GetVoteMerkleRoot(eventID string) (*big.Int, error)
+	GetTotalEventVotes(eventID string) (*big.Int, error)
 	GetEventHash(eventID string) ([]byte, error)
 }
 

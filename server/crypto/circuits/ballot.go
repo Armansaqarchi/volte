@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	maxVoteValues = flag.Int("max_vote_values", 100, "Maximum possible values for vote.")
+	maxVoteValues = flag.Int("max_vote_values", 2, "Maximum possible values for vote.")
 	curveParams   = sw_emulated.GetCurveParams[emulated.BN254Fp]()
 	// Gx and Gy are coordinates of generator point G in BN254Fp.
 	Gx = flag.String("Gx", "", "Specifies the x-coordinate of EC point G.")
@@ -84,22 +84,37 @@ func (c *BallotCircuit) Define(api frontend.API) error {
 		slog.Error(fmt.Sprintf("Failed to initialize the fp emulator instance, err = %s", err.Error()))
 		panic(err)
 	}
-	// Use circuit's meta values G and Y for validation.
+
 	meta := GetBallotCircuitMeta()
+
+	// 1) C1 == kG
 	c1 := sw.ScalarMul(&meta.G, &c.K)
 	fp.AssertIsEqual(&c1.X, &c.C1.X)
 	fp.AssertIsEqual(&c1.Y, &c.C1.Y)
+
+	// 2) Ky == kY
 	Ky := sw.ScalarMul(&meta.Y, &c.K)
-	Mg := sw.ScalarMul(&meta.G, &c.M)
 
-	c2 := sw.Add(Ky, Mg)
-	fp.AssertIsEqual(&c2.X, &c.C2.X)
-	fp.AssertIsEqual(&c2.Y, &c.C2.Y)
+	// 3) Enforce M is boolean: M*(M-1)=0
+	one := fr.NewElement(1)
+	zero := fr.NewElement(0)
+	fr.AssertIsEqual(fr.Mul(&c.M, fr.Sub(&c.M, one)), zero)
 
-	prod := fr.NewElement(1)
-	for i := 0; i < *maxVoteValues; i++ {
-		prod = fr.Mul(prod, fr.Sub(&c.M, fr.NewElement(i)))
-	}
-	fr.AssertIsEqual(prod, fr.NewElement(0))
+	// Build the two valid C2 options without ever computing M*G:
+	// if M=0 => C2 = Ky
+	// if M=1 => C2 = Ky + G
+	c2IfOne := sw.Add(Ky, &meta.G)
+
+	// Select based on the LSB of M (safe because M is constrained boolean above)
+	// Note: ToBits returns bits as frontend.Variables (native field booleans)
+	mBits := fr.ToBits(&c.M)
+	mBit := mBits[0]
+
+	expX := fp.Select(mBit, &c2IfOne.X, &Ky.X) // if mBit==1 pick (Ky+G).X else Ky.X
+	expY := fp.Select(mBit, &c2IfOne.Y, &Ky.Y) // if mBit==1 pick (Ky+G).Y else Ky.Y
+
+	fp.AssertIsEqual(expX, &c.C2.X)
+	fp.AssertIsEqual(expY, &c.C2.Y)
+
 	return nil
 }

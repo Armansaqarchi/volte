@@ -8,9 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"strings"
 	"time"
-	"volte/backend/chain"
 	"volte/backend/databases"
 	"volte/backend/service"
+	"volte/backend/utils/test"
 )
 
 var (
@@ -28,7 +28,7 @@ func RunServer() {
 	flag.Parse()
 
 	mongoClient := databases.NewMongoClient()
-	contractHandler := chain.NewEthereumChainHandler()
+	contractHandler := test.NewFakeContractHandler()
 	voteService := service.NewVotingService(mongoClient, contractHandler)
 	authService := service.NewAuthService(mongoClient)
 
@@ -53,6 +53,7 @@ func RunServer() {
 	engine.POST("event/:id/members/:commitment", voteService.AddMemberToEvent)
 	engine.DELETE("event/:id/members/:commitment", voteService.RemoveMemberFromEvent)
 	engine.POST("event/:id/vote", voteService.Vote)
+	engine.GET("event/:id/tally", voteService.GetTallyScore)
 	engine.GET("event/:id/membership/merkle", voteService.MembershipDetails)
 	engine.GET("users/events", voteService.UserEvents)
 	engine.GET("users/event/:event_id", voteService.UserEvent)

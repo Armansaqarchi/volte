@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"flag"
@@ -39,12 +39,12 @@ func runGenerateKeys(_ *cobra.Command, _ []string) {
 	ballotG16 := zkproofs.NewBallotGroth16()
 	nullifierG16 := zkproofs.NewNullifierGroth16()
 	membershipG16 := zkproofs.NewMembershipGroth16(8)
-	createFileAndWrite("../keys/groth16/ballot/verifyingKey", ballotG16.GetVerifyingKey())
-	createFileAndWrite("../keys/groth16/ballot/provingKey", ballotG16.GetProvingKey())
-	createFileAndWrite("../keys/groth16/nullifier/verifyingKey", nullifierG16.GetVerifyingKey())
-	createFileAndWrite("../keys/groth16/nullifier/provingKey", nullifierG16.GetProvingKey())
-	createFileAndWrite("../keys/groth16/membership/verifyingKey", membershipG16.GetVerifyingKey())
-	createFileAndWrite("../keys/groth16/membership/provingKey", membershipG16.GetProvingKey())
+	createFileAndWrite("./cmd/proof/keys/groth16/ballot/verifyingKey", ballotG16.GetVerifyingKey())
+	createFileAndWrite("./cmd/proof/keys/groth16/ballot/provingKey", ballotG16.GetProvingKey())
+	createFileAndWrite("./cmd/proof/keys/groth16/nullifier/verifyingKey", nullifierG16.GetVerifyingKey())
+	createFileAndWrite("./cmd/proof/keys/groth16/nullifier/provingKey", nullifierG16.GetProvingKey())
+	createFileAndWrite("./cmd/proof/keys/groth16/membership/verifyingKey", membershipG16.GetVerifyingKey())
+	createFileAndWrite("./cmd/proof/keys/groth16/membership/provingKey", membershipG16.GetProvingKey())
 }
 
 func createFileAndWrite(path string, content io.WriterTo) {

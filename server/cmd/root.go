@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"flag"
@@ -22,8 +22,4 @@ func Execute() {
 func init() {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	flag.Parse()
-}
-
-func main() {
-	Execute()
 }

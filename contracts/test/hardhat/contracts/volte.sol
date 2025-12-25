@@ -51,7 +51,7 @@
             Proof     Proof;
             // The public inputs to the circuit.
             // [eventID, nullifier]
-            uint256[2] Input;
+            uint256[3] Input;
         }
 
         struct Proofs {
@@ -61,14 +61,11 @@
         }
 
         struct VoteSubmission {
-            address sender;
             string  eventID;
             Proofs  proofs;
         }
 
         address public admin;
-
-        TallyScore public tallyScore;
 
         Ballot.BallotVerifier public ballot;
         Nullifier.NullifierVerifier public nullifier;
@@ -83,12 +80,12 @@
             ballot = Ballot.BallotVerifier(_ballot);
             nullifier = Nullifier.NullifierVerifier(_nullifier);
             membership = Membership.MembershipVerifier(_membership);
-            tallyScore = TallyScore(0, 0, 0, 0);
         }
 
         mapping (string /* eventID */ => bytes /* NullifierRootHash */) public membershipMerkleRoots;
         mapping (string /* eventID */ => bytes /* VoteRootHash */)      public voteMerkleRoots;
         mapping (string /* eventID */ => bytes /* EventDetailsHash */)  public eventHashes;
+        mapping (uint256 /* eventID */ => TallyScore) public tallyScores;
 
         modifier onlyOwner() {
             require(msg.sender == admin, "Only owner is allowed to execute this transaction.");
@@ -113,15 +110,20 @@
             return eventHashes[eventID];
         }
 
+        function GetTallyScore(uint256 eventID) external view returns (uint256[4] memory){
+            TallyScore storage score = tallyScores[eventID];
+            return [score.C1x, score.C1y, score.C2x, score.C2y];
+        }
+
         function addCiphertexts(
             uint256[2] memory C1, // [x1, y1]
             uint256[2] memory C2  // [x2, y2]
-        ) public returns (uint256[2] memory Csum) {
+        ) public view returns (uint256[2] memory Csum) {
             bool success;
             assembly ("memory-safe") {
                 let ptr := mload(0x40)
 
-                mstore(ptr,        mload(C1))             // x1
+                mstore(ptr,         mload(C1))             // x1
                 mstore(add(ptr,32), mload(add(C1,32)))    // y1
                 mstore(add(ptr,64), mload(C2))            // x2
                 mstore(add(ptr,96), mload(add(C2,32)))    // y2
@@ -139,7 +141,7 @@
         }
 
         // No revert means the proof has been verified and the vote has been submitted.
-        function Vote(VoteSubmission calldata proof) view external{
+        function Vote(VoteSubmission calldata proof) external{
             nullifier.verifyProof(
                 [
                     proof.proofs.nullifier.Proof.Arx,
@@ -212,6 +214,9 @@
             ]);
 
             // Preparing input parameters to perform tally + C.
+            uint256 eventID = proof.proofs.nullifier.Input[0];
+            TallyScore storage tallyScore = tallyScores[eventID];
+
             uint256[2] memory C1 = [C1x, C1y];
             uint256[2] memory C2 = [C2x, C2y];
             uint256[2] memory tallyC1 = [tallyScore.C1x, tallyScore.C1y];

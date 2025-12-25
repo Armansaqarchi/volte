@@ -11,11 +11,13 @@ import (
 	"github.com/txaty/go-merkletree"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"log/slog"
+	"math"
 	"math/big"
 	"net/http"
 	"time"
 	"volte/backend/chain"
 	"volte/backend/chain/contracts"
+	"volte/backend/crypto/utils"
 	"volte/backend/databases"
 	"volte/backend/models"
 )
@@ -180,6 +182,7 @@ func (v *VotingService) DeleteEvent(ctx *gin.Context) {
 func (v *VotingService) AddMemberToEvent(ctx *gin.Context) {
 	// Add security step
 	eventsCollection := v.mongoClient.GetClient().Database(*database).Collection(*eventCollection)
+	usersCollection := v.mongoClient.GetClient().Database(*database).Collection(*usersCollection)
 	eventId := ctx.Param("id")
 
 	var event models.Event
@@ -203,7 +206,31 @@ func (v *VotingService) AddMemberToEvent(ctx *gin.Context) {
 	if commitment == "" {
 		slog.Error("Commitment must not be empty!.")
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Identity secret must be provided!"})
+		return
 	}
+
+	if count, err := usersCollection.CountDocuments(ctx, bson.M{"_id": commitment}); err != nil {
+		slog.Error(fmt.Sprintf("Failed to count users on commitment, err : %s", err.Error()))
+	} else if count == 0 {
+		slog.Error("User not found.")
+		ctx.JSON(http.StatusNotFound, gin.H{"message": "User not found"})
+		return
+	}
+
+	if commitment == event.Admin {
+		slog.Error("commitment belongs to the event admin")
+		ctx.JSON(http.StatusAlreadyReported, gin.H{"message": "User is already a member of the event"})
+		return
+	}
+
+	for _, member := range event.VoteMembers {
+		if member == commitment {
+			slog.Error("user is already a member of the event!")
+			ctx.JSON(http.StatusAlreadyReported, gin.H{"message": "User is already a member of the event"})
+			return
+		}
+	}
+
 	event.VoteMembers = append(event.VoteMembers, commitment)
 
 	if _, err := eventsCollection.UpdateOne(
@@ -269,7 +296,23 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 	for _, member := range event.VoteMembers {
 		commitments = append(commitments, models.Commitment(member))
 	}
-	commitmentsTree, err := merkletree.New(&merkletree.Config{Mode: merkletree.ModeProofGenAndTreeBuild}, commitments)
+	// define sha256(0) representing empty nodes that fills total members
+	// up to 2^8 to match the setup arguments.
+
+	emptyNodeVal, _ := utils.MimcHash([]byte("0"))
+	for i := 0; i < int(math.Pow(2, 8))-len(commitments); i++ {
+		commitments = append(commitments, models.Commitment(emptyNodeVal))
+	}
+
+	commitmentsTree, err := merkletree.New(
+		&merkletree.Config{Mode: merkletree.ModeProofGenAndTreeBuild, HashFunc: func(args ...[]byte) ([]byte, error) {
+			hash, err := utils.MimcHash(args...)
+			return []byte(hash), err
+		}, DisableLeafHashing: true,
+		},
+		commitments,
+	)
+
 	if err != nil {
 		if errors.Is(err, merkletree.ErrInvalidNumOfDataBlocks) {
 			slog.Error(fmt.Sprintf("Failed to create commitments tree, err : %s", err.Error()))
@@ -294,10 +337,12 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 		)
 		return
 	}
+
 	if _, err := commitmentMerklePathCollection.InsertOne(ctx, &models.EventTreeProofsDto{
 		ID:      eventID,
 		LeafMap: eventCommitmentTree.Tree.LeafMap,
 		Proofs:  eventCommitmentTree.Tree.Proofs,
+		Root:    eventCommitmentTree.Tree.Root,
 	}); err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": fmt.Sprintf("Failed to store commitments for event %s", event.ID),
@@ -312,6 +357,17 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 		})
 		return
 	}
+	root, ok := big.NewInt(0).SetString(string(eventCommitmentTree.Tree.Root), 10)
+	if !ok {
+		slog.Error(fmt.Sprintf("Failed to convert event root to string, err : %s", err))
+	}
+	if _, err := v.contractHandler.GetVolteContract().SetVoteMerkleRoot(eventID, root); err != nil {
+		slog.Error(fmt.Sprintf("Failed to set vote merkle root, err : %s", err.Error()))
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": fmt.Sprintf("Failed to set vote merkle root"),
+		})
+	}
+	slog.Info(fmt.Sprintf("Successfully updated merkleRoot for event %s", event.ID))
 	ctx.JSON(http.StatusOK, gin.H{"message": "Event has started", "start": event.StartTime})
 }
 
@@ -364,7 +420,10 @@ func (v *VotingService) MembershipDetails(ctx *gin.Context) {
 	commitmentIdx := eventTree.LeafMap[string(leafValue)]
 	fmt.Println(eventTree.Proofs[commitmentIdx])
 	ctx.JSON(http.StatusOK, gin.H{
-		"data": eventTree.Proofs[commitmentIdx],
+		"data": gin.H{
+			"root":  eventTree.Root,
+			"proof": eventTree.Proofs[commitmentIdx],
+		},
 	})
 }
 
@@ -459,13 +518,15 @@ func (v *VotingService) RemoveMemberFromEvent(ctx *gin.Context) {
 
 func (v *VotingService) Vote(ctx *gin.Context) {
 	var proofs contracts.VolteContractVoteSubmission
-	if err := ctx.Bind(&proofs); err != nil {
+	if err := ctx.ShouldBindJSON(&proofs); err != nil {
+		slog.Error(fmt.Sprintf("Failed to bind json, err : %s", err.Error()))
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"status":  "failure",
 			"message": fmt.Sprintf("Internal server error. err : %s", err),
 		})
 		return
 	}
+	slog.Info(fmt.Sprintf("proof : %v", proofs))
 	if _, err := v.contractHandler.GetVolteContract().Vote(proofs); err != nil {
 		slog.Error(fmt.Sprintf("Failed to verify vote, err : %s", err.Error()))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"status": "failure"})
@@ -474,13 +535,30 @@ func (v *VotingService) Vote(ctx *gin.Context) {
 }
 
 func (v *VotingService) GetTallyScore(ctx *gin.Context) {
-	eventID := ctx.Query("eventID")
-
-	id := newBigIntFromString(eventID)
-	scores, err := v.contractHandler.GetVolteContract().GetTallyScore(id)
+	eventID := ctx.Param("id")
+	scores, err := v.contractHandler.GetVolteContract().GetTallyScore(eventID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get tally score"})
+		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"score": scores})
+	votes, err := v.contractHandler.GetVolteContract().GetTotalEventVotes(eventID)
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to get total votes, err : %s", err.Error()))
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get tally total votes"})
+		return
+	}
+	C1, _ := utils.MakeG1Affine(scores[0].String(), scores[1].String())
+	C2, _ := utils.MakeG1Affine(scores[2].String(), scores[3].String())
+	// The private key used to decrypt the elgamal encryption.
+	// This is bound and is derived before the encryption phase.
+	C1x := utils.G1MulAffine(&C1, big.NewInt(30))
+	// m.(G) = C2 - x.(C1)
+	M := utils.G1AddAffine(&C2, C1x.Neg(&C1x))
+	G1 := utils.GenerateBaseECC()
+	// for calculating the raw m, we use an optimized brute force approach called BSGS.
+	// The Baby step giant step algorithm, calculates the raw m in O(squared(n)).
+	// In our case, it takes about O(radical(2 ** n)) which in case is about 2*16 operations.
+	got, _ := utils.BSGS(M, G1, uint64(math.Pow(2, 32)))
 
+	ctx.JSON(http.StatusOK, gin.H{"score": got, "total": votes.String()})
 }

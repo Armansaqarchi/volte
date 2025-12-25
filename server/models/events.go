@@ -99,6 +99,7 @@ type EventTreeProofsDto struct {
 	ID      string              `json:"id" bson:"_id"`
 	LeafMap map[string]int      `json:"-" bson:"-"`
 	Proofs  []*merkletree.Proof `json:"proofs" bson:"proofs"`
+	Root    []byte              `json:"root" bson:"root"`
 }
 
 func (e *EventTreeProofsDto) MarshalBSON() ([]byte, error) {
@@ -110,20 +111,25 @@ func (e *EventTreeProofsDto) MarshalBSON() ([]byte, error) {
 		ID          string              `bson:"_id,omitempty"`
 		LeafMapJSON []byte              `bson:"leaf_map"`
 		Proofs      []*merkletree.Proof `bson:"proofs"`
+		Root        []byte              `bson:"root"`
 	}{
 		ID:          e.ID,
 		LeafMapJSON: leafMapJSON,
 		Proofs:      e.Proofs,
+		Root:        e.Root,
 	}
+	fmt.Println("root : ", e.Root)
 
 	return bson.Marshal(aux)
 }
 
 func (e *EventTreeProofsDto) UnmarshalBSON(data []byte) error {
+
 	var aux struct {
 		ID          string              `bson:"_id,omitempty"`
 		LeafMapJSON []byte              `bson:"leaf_map"`
 		Proofs      []*merkletree.Proof `bson:"proofs"`
+		Root        []byte              `bson:"root"`
 	}
 
 	if err := bson.Unmarshal(data, &aux); err != nil {
@@ -132,6 +138,9 @@ func (e *EventTreeProofsDto) UnmarshalBSON(data []byte) error {
 
 	e.ID = aux.ID
 	e.Proofs = aux.Proofs
+	e.Root = aux.Root
+
+	fmt.Println("root unmarshalling : ", aux.Root)
 
 	// Handle missing / empty leaf_map gracefully
 	if len(aux.LeafMapJSON) == 0 {

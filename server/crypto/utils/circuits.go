@@ -157,12 +157,12 @@ func ExtractProof(proof groth16.Proof) ([]*big.Int, error) {
 	// [A.x, A.y, B.x.imag, B.x.real, B.y.imag, B.y.real, C.x, C.y]
 	return []*big.Int{ax, ay, bx1, bx0, by1, by0, cx, cy}, nil
 }
-func MimcHash(inputs ...string) (string, error) {
+func MimcHash(inputs ...[]byte) (string, error) {
 	h := mimc.NewMiMC()
 
 	for _, s := range inputs {
 		// interpret the decimal string as a big integer
-		bi, ok := new(big.Int).SetString(s, 10)
+		bi, ok := new(big.Int).SetString(string(s), 10)
 		if !ok {
 			return "", fmt.Errorf("invalid integer: %s", s)
 		}
@@ -178,5 +178,8 @@ func MimcHash(inputs ...string) (string, error) {
 
 	var outFe fr.Element
 	outFe.Unmarshal(h.Sum(nil))
+
+	fmt.Println("Result : ", outFe.BigInt(new(big.Int)).String())
+
 	return outFe.BigInt(new(big.Int)).String(), nil
 }

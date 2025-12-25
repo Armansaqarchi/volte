@@ -3,3 +3,7 @@
 */*.bin
 */*.abi
 *keys
+*/node_modules
+/server/cmd/proof/keys
+client/.next
+*.wasm

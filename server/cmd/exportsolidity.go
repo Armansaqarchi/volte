@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"crypto/sha256"
@@ -37,11 +37,11 @@ func runExportSolidity(_ *cobra.Command, _ []string) {
 
 	flag.Parse()
 
-	vkFile, pkFile := utils.GetCircuitKeys("../keys/groth16/ballot")
+	vkFile, pkFile := utils.GetCircuitKeys("./cmd/proof/keys/groth16/ballot")
 	ballotG16 := zkproofs.NewBallotGroth16FromExistingKeys(vkFile, pkFile)
-	vkFile, pkFile = utils.GetCircuitKeys("../keys/groth16/membership")
+	vkFile, pkFile = utils.GetCircuitKeys("./cmd/proof/keys/groth16/membership")
 	membershipG16 := zkproofs.NewMembershipGroth16FromExistingKeys(8, vkFile, pkFile)
-	vkFile, pkFile = utils.GetCircuitKeys("../keys/groth16/nullifier")
+	vkFile, pkFile = utils.GetCircuitKeys("./cmd/proof/keys/groth16/nullifier")
 	nullifierG16 := zkproofs.NewNullifierGroth16FromExistingKeys(vkFile, pkFile)
 
 	exportSolidityFile("../contracts/groth16/ballot.sol", ballotG16.GetVerifyingKey())

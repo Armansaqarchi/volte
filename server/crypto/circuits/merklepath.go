@@ -2,10 +2,9 @@ package circuits
 
 import (
 	"fmt"
+	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/hash/mimc"
 	"log/slog"
-
-	"github.com/consensys/gnark/frontend"
 )
 
 type MerkleCircuit struct {
@@ -16,7 +15,7 @@ type MerkleCircuit struct {
 	MerklePath []frontend.Variable `gnark:",secret"`
 	// List of bits indicating child position at each index (0 indicates left, 1 indicates right). Without this,
 	// positions can be mistaken and result in wrong hashing.
-	PathPositions []frontend.Variable `gnark:",public"`
+	PathPositions []frontend.Variable `gnark:",secret"`
 	// The user's secret key we check the leaf value against.
 	SecretKey frontend.Variable `gnark:",secret"`
 }
@@ -37,9 +36,10 @@ func (c *MerkleCircuit) Define(api frontend.API) error {
 		isRight := c.PathPositions[i]
 
 		// Always obtain the final hash input by concatenating the children from left to right.
-		left := api.Select(isRight, sibling, current)
 		right := api.Select(isRight, current, sibling)
-
+		left := api.Select(isRight, sibling, current)
+		api.Println("left is ", left)
+		api.Println("right is ", right)
 		hasher.Reset()
 		hasher.Write(left, right)
 		current = hasher.Sum()

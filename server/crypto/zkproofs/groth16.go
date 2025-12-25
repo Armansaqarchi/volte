@@ -9,12 +9,13 @@ import (
 	"github.com/minio/sha256-simd"
 	"io"
 	"log/slog"
+	"math/big"
 	"volte/backend/crypto/circuits"
 	"volte/backend/crypto/constraintsys"
 	"volte/backend/crypto/utils"
 )
 
-func CreateProof(assignment frontend.Circuit, g16 *Groth16) {
+func CreateProof(assignment frontend.Circuit, g16 *Groth16) ([]*big.Int, any) {
 	fullWitness, err := frontend.NewWitness(assignment, ecc.BN254.ScalarField())
 	if err != nil {
 		slog.Error("new witness failed: %v", err)
@@ -33,19 +34,14 @@ func CreateProof(assignment frontend.Circuit, g16 *Groth16) {
 		panic(err)
 	}
 	slog.Info("Proof created.")
-	slog.Info("Testing proof.")
 	proofParts, err := utils.ExtractProof(proof)
 	if err != nil {
 		slog.Error(fmt.Sprintf("failed to extract public inputs from witness, err : %s", err))
 	}
-	for _, part := range proofParts {
-		fmt.Println(part.String())
-	}
-	fmt.Println("Generated public inputs:")
-	fmt.Println(pubWitness.Vector())
+	return proofParts, pubWitness.Vector()
 }
 
-// Groth16 is a base Groth16 wrapper that corresponding to an R1CS.
+// Groth16 is a base Groth16 wrapper that corresponds to an R1CS.
 type Groth16 struct {
 	r1cs         constraintsys.R1CS
 	provingKey   groth16.ProvingKey
@@ -73,7 +69,7 @@ func SetupNewGroth16(constraintSystem constraintsys.R1CS) *Groth16 {
 
 	slog.Info("Successfully compiled the circuit.")
 	slog.Info(fmt.Sprintf("Number of public variables in the circuit : %d", cs.GetNbPublicVariables()))
-	slog.Info(fmt.Sprintf("Number of secret variables in the circuit : %d", cs.GetNbSecretVariables()))
+	slog.Info(fmt.Sprintf("Number of secret variables in the circuit : X%d", cs.GetNbSecretVariables()))
 	slog.Info(fmt.Sprintf("Number of internal variables in the circuit : %d", cs.GetNbInternalVariables()))
 	provingKey, verifyingKey, err := groth16.Setup(cs)
 	if err != nil {
@@ -99,14 +95,17 @@ func SetupNewGroth16FromKeys(constraintSystem constraintsys.R1CS, provingKey io.
 	slog.Info(fmt.Sprintf("Number of internal variables in the circuit : %d", cs.GetNbInternalVariables()))
 
 	pk := groth16.NewProvingKey(g.r1cs.GetCurve())
+	slog.Info("Reading proving key...")
 	if _, err := pk.ReadFrom(provingKey); err != nil {
 		slog.Error(fmt.Sprintf("failed to read circuit proving key: %v", err))
 	}
+	g.provingKey = pk
+	slog.Info("Finished reading proving key.")
 	vk := groth16.NewVerifyingKey(g.r1cs.GetCurve())
+	slog.Info("Reading verifying key...")
 	if _, err := vk.ReadFrom(VerifyingKey); err != nil {
 		slog.Error(fmt.Sprintf("failed to read circuit verifying key: %v", err))
 	}
-	g.provingKey = pk
 	g.verifyingKey = vk
 	slog.Info("Successfully build groth16 zkproof")
 
@@ -118,6 +117,7 @@ func NewBallotGroth16() *Groth16 {
 }
 
 func NewBallotGroth16FromExistingKeys(verifyingKey io.Reader, provingKey io.Reader) *Groth16 {
+	slog.Info("Instantiating the groth16 ballot from existing keys.")
 	return SetupNewGroth16FromKeys(
 		constraintsys.NewVolteBN254R1CS(new(circuits.BallotCircuit)), provingKey, verifyingKey,
 	)

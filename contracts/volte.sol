@@ -51,7 +51,7 @@
             Proof     Proof;
             // The public inputs to the circuit.
             // [eventID, nullifier]
-            uint256[2] Input;
+            uint256[3] Input;
         }
 
         struct Proofs {
@@ -61,14 +61,11 @@
         }
 
         struct VoteSubmission {
-            address sender;
             string  eventID;
             Proofs  proofs;
         }
 
         address public admin;
-
-
 
         Ballot.BallotVerifier public ballot;
         Nullifier.NullifierVerifier public nullifier;
@@ -85,17 +82,21 @@
             membership = Membership.MembershipVerifier(_membership);
         }
 
-        mapping (string /* eventID */ => bytes /* NullifierRootHash */) public membershipMerkleRoots;
-        mapping (string /* eventID */ => bytes /* VoteRootHash */)      public voteMerkleRoots;
+        mapping (string /* eventID */ => uint256 /* VoteRootHash */)      public voteMerkleRoots;
         mapping (string /* eventID */ => bytes /* EventDetailsHash */)  public eventHashes;
-        mapping (uint256 /* eventID */ => TallyScore) public tallyScores;
+        mapping (string /* eventID */ => TallyScore) public tallyScores;
+        mapping (string /* eventID */ => uint256) public totalEventVotes;
+
+        error EventRootMismatch(uint256 expectedRoot, uint256 gotRoot);
+
+        // Next step, store a hash of all the nullifiers for consistency!
 
         modifier onlyOwner() {
             require(msg.sender == admin, "Only owner is allowed to execute this transaction.");
             _;
         }
 
-        function SetVoteMerkleRoot(string calldata eventID, bytes calldata value) external {
+        function SetVoteMerkleRoot(string calldata eventID, uint256 value) external {
             // check before to make sure its a valid hash
             voteMerkleRoots[eventID] = value;
         }
@@ -105,7 +106,7 @@
             eventHashes[eventID] = value;
         }
 
-        function GetVoteMerkleRoot(string calldata eventID) external view returns (bytes memory) {
+        function GetVoteMerkleRoot(string calldata eventID) external view returns (uint256) {
             return voteMerkleRoots[eventID];
         }
 
@@ -113,9 +114,13 @@
             return eventHashes[eventID];
         }
 
-        function GetTallyScore(uint256 eventID) external view returns (uint256[4] memory){
+        function GetTallyScore(string memory eventID) external view returns (uint256[4] memory){
             TallyScore storage score = tallyScores[eventID];
             return [score.C1x, score.C1y, score.C2x, score.C2y];
+        }
+
+        function GetTotalEventVotes(string memory eventID) external view returns (uint256) {
+            return totalEventVotes[eventID];
         }
 
         function addCiphertexts(
@@ -145,6 +150,9 @@
 
         // No revert means the proof has been verified and the vote has been submitted.
         function Vote(VoteSubmission calldata proof) external{
+            if (proof.proofs.membership.Input[0] != voteMerkleRoots[proof.eventID])
+                revert EventRootMismatch(voteMerkleRoots[proof.eventID], proof.proofs.membership.Input[0]);
+
             nullifier.verifyProof(
                 [
                     proof.proofs.nullifier.Proof.Arx,
@@ -217,7 +225,7 @@
             ]);
 
             // Preparing input parameters to perform tally + C.
-            uint256 eventID = proof.proofs.nullifier.Input[0];
+            string memory eventID = proof.eventID;
             TallyScore storage tallyScore = tallyScores[eventID];
 
             uint256[2] memory C1 = [C1x, C1y];
@@ -232,6 +240,8 @@
             tallyScore.C1y = resultC1[1];
             tallyScore.C2x = resultC2[0];
             tallyScore.C2y = resultC2[1];
+
+            totalEventVotes[eventID] = totalEventVotes[eventID] + 1;
         }
 
         function recombine(uint64[4] memory limbs) internal pure returns (uint256 x) {
