@@ -23,7 +23,7 @@ type MerkleCircuit struct {
 func (c *MerkleCircuit) Define(api frontend.API) error {
 	hasher, err := mimc.NewMiMC(api)
 	if err != nil {
-		slog.Error(fmt.Sprintf("Couldn't instantiate poseidon hash. err : %s", err))
+		slog.Error(fmt.Sprintf("Couldn't instantiate mimc hash. err : %s", err))
 		panic(err)
 	}
 	// Check if secret key matches the user commitment!

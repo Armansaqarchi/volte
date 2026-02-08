@@ -12,13 +12,6 @@ import (
 	"volte/backend/crypto/utils"
 )
 
-//func main() {
-//	flag.Parse()
-//	fmt.Println(proof.RunBallotProof())
-//	fmt.Println(proof.RunMerklePathProof())
-//	fmt.Println(proof.RunNullifierProof())
-//}
-
 func runProof(this js.Value, args []js.Value) any {
 	flag.Parse()
 	jsonData, err := json.Marshal(contracts.VolteContractProofs{

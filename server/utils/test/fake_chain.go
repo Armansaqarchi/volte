@@ -50,18 +50,21 @@ func GetFakeChain() *FakeChain {
 		panic(err)
 	}
 	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
-	ballotContractAddr, _, _, err := ballot.DeployVolte(auth, backend.Client())
+	ballotContractAddr, tx, _, err := ballot.DeployVolte(auth, backend.Client())
 	if err != nil {
-		slog.Error(fmt.Sprintf("Failed to gain ballot, err : %s", err.Error()))
+		panic(fmt.Sprintf("Failed to gain ballot, err : %s", err.Error()))
 	}
-	nullifierContractAddr, _, _, err := nullifier.DeployVolte(auth, backend.Client())
+	slog.Info(fmt.Sprintf("BallotTransaction deployed with total gas : %d", tx.Gas()))
+	nullifierContractAddr, tx, _, err := nullifier.DeployVolte(auth, backend.Client())
 	if err != nil {
-		slog.Error(fmt.Sprintf("Failed to gain ballot, err : %s", err.Error()))
+		panic(fmt.Sprintf("Failed to gain ballot, err : %s", err.Error()))
 	}
-	membershipContractAddr, _, _, err := membership.DeployVolte(auth, backend.Client())
+	slog.Info(fmt.Sprintf("NullifierTransaction deployed with total gas : %d", tx.Gas()))
+	membershipContractAddr, tx, _, err := membership.DeployVolte(auth, backend.Client())
 	if err != nil {
-		slog.Error(fmt.Sprintf("Failed to gain ballot, err : %s", err.Error()))
+		panic(fmt.Sprintf("Failed to gain ballot, err : %s", err.Error()))
 	}
+	slog.Info(fmt.Sprintf("MembershipTransaction deployed with total gas : %d", tx.Gas()))
 	contractAddr, tx, volteContract, err := contracts.DeployVolte(
 		auth, backend.Client(), ballotContractAddr, membershipContractAddr, nullifierContractAddr,
 	)
@@ -69,6 +72,7 @@ func GetFakeChain() *FakeChain {
 		slog.Error(fmt.Sprintf("Failed to deploy contract, err : %s", err.Error()))
 		panic(err)
 	}
+	slog.Info(fmt.Sprintf("VolteTransaction deployed with total gas : %d", tx.Gas()))
 
 	// Auto commitment of transactions.
 	// This way, we won't need to commit on every Transaction done in test mode.

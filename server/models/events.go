@@ -32,6 +32,7 @@ type Event struct {
 	Admin       string         `json:"admin" bson:"admin"` // Owner of this event.
 	Duration    time.Duration  `json:"duration" bson:"duration"`
 	StartTime   *time.Time     `json:"startTime" bson:"start_time"`
+	ForceEnd    bool           `json:"forceEnd" bson:"force_end"`
 	VoteOptions []string       `json:"voteOptions" bson:"vote_options"` // List of possible vote values.
 	VoteMembers []string       `json:"voteMembers" bson:"vote_members"` // List of members eligible for voting.
 	Tally       map[string]int `json:"tally" bson:"tally"`              // The overall score for each VoteOption after event ending.
@@ -77,16 +78,17 @@ func (e *Event) CalculateEventHash() []byte {
 		startEventHash = ""
 	}
 	jsonData, _ := json.Marshal(map[string]any{
-		"Commitment":  e.ID,
-		"Name":        e.Name,
-		"Question":    e.Question,
-		"Admin":       e.Admin,
-		"Duration":    e.Duration,
-		"StartTime":   startEventHash,
-		"Votes":       e.VoteOptions,
-		"VoteMembers": e.VoteMembers,
-		"Tally":       e.Tally,
-		"Revoked":     e.Revoked,
+		"Commitment":   e.ID,
+		"Name":         e.Name,
+		"Question":     e.Question,
+		"Admin":        e.Admin,
+		"Duration":     e.Duration,
+		"StartTime":    startEventHash,
+		"ForceDeleted": e.ForceEnd,
+		"Votes":        e.VoteOptions,
+		"VoteMembers":  e.VoteMembers,
+		"Tally":        e.Tally,
+		"Revoked":      e.Revoked,
 	})
 	h := sha256.New()
 	h.Write(jsonData)

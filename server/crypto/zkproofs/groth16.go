@@ -136,15 +136,15 @@ func NewNullifierGroth16FromExistingKeys(verifyingKey io.Reader, provingKey io.R
 func NewMembershipGroth16(len int) *Groth16 {
 	// Length of arrays for this circuit are dynamic, so proving key and verifying key varies between other events.
 	return SetupNewGroth16(constraintsys.NewVolteBN254R1CS(&circuits.MerkleCircuit{
-		MerklePath:    make([]frontend.Variable, len),
-		PathPositions: make([]frontend.Variable, len),
+		MerklePath:    make([]frontend.Variable, 8),
+		PathPositions: make([]frontend.Variable, 8),
 	}))
 }
 
 func NewMembershipGroth16FromExistingKeys(len int, verifyingKey io.Reader, provingKey io.Reader) *Groth16 {
 	// Length of arrays for this circuit are dynamic, so proving key and verifying key varies between other events.
 	return SetupNewGroth16FromKeys(constraintsys.NewVolteBN254R1CS(&circuits.MerkleCircuit{
-		MerklePath:    make([]frontend.Variable, len),
-		PathPositions: make([]frontend.Variable, len),
+		MerklePath:    make([]frontend.Variable, 8),
+		PathPositions: make([]frontend.Variable, 8),
 	}), provingKey, verifyingKey)
 }

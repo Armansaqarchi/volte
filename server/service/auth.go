@@ -85,7 +85,7 @@ func (s *AuthService) Register(ctx *gin.Context) {
 			}
 			ctx.JSON(http.StatusOK, gin.H{
 				"message": "User has been successfully registered.",
-				"data":    gin.H{"username": user.Username, "Commitment": user.Commitment}},
+				"data":    gin.H{"username": user.Username, "commitment": user.Commitment}},
 			)
 			return
 		} else {
