@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { Shield, AlertTriangle } from 'lucide-react'
-import {toCommitment, generatePrivateKey} from "@/lib/auth"
+import {MimC7Hash} from "@/lib/auth"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -26,7 +26,7 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const hashedPrivateKey = await toCommitment(rawPrivateKey)
+      const hashedPrivateKey = await MimC7Hash([BigInt(rawPrivateKey)])
       console.log("The commitment : ", hashedPrivateKey)
 
       console.log(JSON.stringify({

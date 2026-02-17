@@ -20,7 +20,7 @@ import {
     X,
     BarChart3,
 } from "lucide-react"
-import { getCurrentUser, type User } from "@/lib/auth"
+import {getCommitment, getCurrentUser, MimC7Hash, type User} from "@/lib/auth"
 import { getEvent, type Event, IsEventActive, IsEventStarted } from "@/lib/events"
 import { DashboardNav } from "@/components/dashboard-nav"
 import { toast } from "@/hooks/use-toast"
@@ -28,6 +28,9 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { runWasm } from "@/lib/zkproof/go/main"
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart"
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts"
+import generateBallotProof from "@/lib/zkproof/circom/ballot/generate_proof.mjs"
+import generateMerkleProof from "@/lib/zkproof/circom/merkletree/generator.mjs";
+import generateNullifier from "@/lib/zkproof/circom/nullifier/generateNullifier.mjs";
 
 type VoteResults = {
     option: string
@@ -86,6 +89,12 @@ export default function EventDetailPage() {
     })
     const [addMemberError, setAddMemberError] = useState<string | null>(null)
     const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false)
+    const [isForceEndingEvent, setIsForceEndingEvent] = useState(false)
+    const [forceEndConfirmation, setForceEndConfirmation] = useState<{ open: boolean; confirmText: string; error?: string }>({
+        open: false,
+        confirmText: "",
+        error: undefined,
+    })
 
     useEffect(() => {
         if (!id) return
@@ -122,7 +131,6 @@ export default function EventDetailPage() {
                 },
                 credentials: "include",
             })
-
             if (!response.ok) {
                 const errorData = await response.json()
                 const error = errorData.error || "Failed to fetch results"
@@ -130,9 +138,7 @@ export default function EventDetailPage() {
                 toast({ title: "Failed to load results" })
                 return
             }
-
             const data = await response.json()
-            console.log("[v0] Tally response:", data)
 
             const score = Number(data.score)
             const total = Number(data.total)
@@ -291,10 +297,10 @@ export default function EventDetailPage() {
         }
     }
 
-    function merklePathToBits(path: number, depth: number): number[] {
-        const bits: number[] = new Array(depth)
+    function merklePathToBits(path: number, depth: number): string[] {
+        const bits: string[] = new Array(depth)
         for (let i = 0; i < depth; i++) {
-            bits[i] = Number((path >> i) & 1)
+            bits[i] = String(((path >> i) & 1) ^ 1 /* toggle the bit */)
         }
         return bits
     }
@@ -332,13 +338,10 @@ export default function EventDetailPage() {
             const jsonBody = await response.json()
             console.log(jsonBody)
 
-            const membershipPath: bigint[] = []
-            jsonBody.data.proof.Siblings.forEach((sibling: string) => membershipPath.push(BigInt(atob(sibling))))
-
-            const paths = merklePathToBits(jsonBody.data.Path, jsonBody.data.proof.Siblings.length)
-
+            const membershipPath: string[] = []
+            jsonBody.data.proof.Siblings.forEach((sibling: string) => membershipPath.push((atob(sibling))))
+            const paths = merklePathToBits(jsonBody.data.proof.Path, jsonBody.data.proof.Siblings.length)
             console.log(paths)
-            console.log(toCommaSeparated(membershipPath))
             console.log(uuidToBigInt(event?.id as string))
             console.log("root : ", atob(jsonBody.data.root).toString())
 
@@ -348,7 +351,7 @@ export default function EventDetailPage() {
                 `--user_secret_key=${localStorage.getItem("privateKey")}`,
                 `--event_id=${uuidToBigInt(event?.id as string)}`,
                 `--membership_merkle_path=${toCommaSeparated(membershipPath)}`,
-                `--membership_path_positions=${toCommaSeparated(paths)}`,
+                `--membership_path_positions=${paths}`,
                 `--membership_merkle_root=${atob(jsonBody.data.root)}`,
                 `--msg=${option}`,
                 "--Gx=1",
@@ -357,17 +360,65 @@ export default function EventDetailPage() {
 
             console.log(argv)
 
-            const proof = await runWasm("runProof", argv)
+            // const merkle = await runWasm("runMerkle", argv)
+            // const nullifier = await runWasm("runNullifier", argv)
+            const m = await generateBallotProof(option)
+            console.log( {
+                "MerkleRoot": `${atob(jsonBody.data.root)}`,
+                "LeafValue": getCommitment(),
+                "MerklePath": membershipPath,
+                "PathPositions": paths,
+                "SecretKey": `${localStorage.getItem("privateKey")}`
+            },)
+            const m2 = await generateMerkleProof(
+                {
+                    "MerkleRoot": `${atob(jsonBody.data.root)}`,
+                    "LeafValue": getCommitment(),
+                    "MerklePath": membershipPath,
+                    "PathPositions": paths,
+                    "SecretKey": `${localStorage.getItem("privateKey")}`
+                },
+            )
+            console.log("generated : ", m2)
 
-            const body = `{"eventID":${JSON.stringify(event?.id)},` + `"proofs":${proof}}`
-            console.log(body)
+            const nullifier = await MimC7Hash([BigInt(localStorage.getItem("privateKey")), uuidToBigInt(event?.id as string)])
+            console.log("nullifier : ", nullifier)
+            console.log({
+                "Commitment": getCommitment(),
+                "EventID": `${uuidToBigInt(event?.id as string)}`,
+                "Nullifier": nullifier,
+                "SecretKey": `${localStorage.getItem("privateKey")}`
+            })
+            const m3 = await generateNullifier({
+                "Commitment": getCommitment(),
+                "EventID": `${uuidToBigInt(event?.id as string)}`,
+                "Nullifier": nullifier,
+                "SecretKey": `${localStorage.getItem("privateKey")}`
+            })
+            console.log("m3 : ", m3)
+
+
+
+            const proof = {
+                ballot: m,
+                membership: m2,
+                nullifier: m3
+            }
+
+            console.log(JSON.stringify({
+                "EventID": event?.id,
+                "Proofs": proof
+            }))
 
             response = await fetch(`http://localhost:8000/event/${event?.id}/vote`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: body,
+                body: JSON.stringify({
+                    "EventID": event?.id,
+                    "Proofs": proof
+                }),
                 credentials: "include",
             })
 
@@ -469,12 +520,73 @@ export default function EventDetailPage() {
         await handleDeleteEvent()
     }
 
+    function handleForceEndEventClick() {
+        setForceEndConfirmation({ open: true, confirmText: "", error: undefined })
+    }
+
+    async function submitForceEndEventAfterConfirmation() {
+        if (forceEndConfirmation.confirmText.toLowerCase() !== "end") {
+            setForceEndConfirmation((prev) => ({ ...prev, error: "Please type 'end' to proceed" }))
+            return
+        }
+        await handleConfirmForceEndEvent()
+    }
+
+    async function handleConfirmForceEndEvent() {
+        setIsForceEndingEvent(true)
+
+        try {
+            const response = await fetch(`http://localhost:8000/event/${event?.id}/end`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                credentials: "include",
+            })
+
+            if (!response.ok) {
+                const errorData = await response.json()
+                const error = errorData.error || "Failed to force end event"
+                setForceEndConfirmation((prev) => ({ ...prev, error }))
+                setErrorMessage(error)
+                toast({ title: "Failed to force end event" })
+                setIsForceEndingEvent(false)
+                return
+            }
+
+            const data: { forceEnd: boolean } = await response.json()
+            setEvent((prev) =>
+                prev
+                    ? {
+                        ...prev,
+                        forceEnd: data.forceEnd,
+                    }
+                    : prev,
+            )
+
+            toast({ title: "Event successfully ended." })
+            setForceEndConfirmation({ open: false, confirmText: "", error: undefined })
+            setIsForceEndingEvent(false)
+
+            // Refresh the page to recalculate isFinished and update all components
+            setTimeout(() => {
+                window.location.reload()
+            }, 1000)
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "An error occurred"
+            setForceEndConfirmation((prev) => ({ ...prev, error: message }))
+            setErrorMessage(message)
+            toast({ title: "Error force ending event" })
+            setIsForceEndingEvent(false)
+        }
+    }
+
     const isEventFinished = () => {
         if (!event?.startTime) return false
         const now = new Date().getTime()
         const startTime = new Date(event.startTime).getTime()
-        const endTime = startTime + event.duration
-        return now >= endTime
+        const endTime = startTime + event.duration * 1000
+        return now >= endTime || event.forceEnd
     }
 
     if (IsEventLoading) {
@@ -564,6 +676,24 @@ export default function EventDetailPage() {
                                                 <>
                                                     <Play className="h-4 w-4" />
                                                     <span className="text-sm">Start</span>
+                                                </>
+                                            )}
+                                            <div className="absolute inset-0 rounded-lg bg-white opacity-0 group-hover:opacity-10 transition-opacity duration-200" />
+                                        </button>
+                                    )}
+
+                                    {isOwner && isStarted && !isFinished && (
+                                        <button
+                                            onClick={handleForceEndEventClick}
+                                            disabled={isForceEndingEvent}
+                                            className="group relative inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold text-white bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 active:scale-95 transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {isForceEndingEvent ? (
+                                                <LoadingSpinner size="sm" />
+                                            ) : (
+                                                <>
+                                                    <X className="h-4 w-4" />
+                                                    <span className="text-sm">Force End</span>
                                                 </>
                                             )}
                                             <div className="absolute inset-0 rounded-lg bg-white opacity-0 group-hover:opacity-10 transition-opacity duration-200" />
@@ -1124,6 +1254,82 @@ export default function EventDetailPage() {
                             disabled={deleteConfirmation.confirmText.toLowerCase() !== "delete" || isDeletingEvent}
                         >
                             {isDeletingEvent ? <LoadingSpinner size="sm" text="Deleting..." /> : "Delete Event"}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={forceEndConfirmation.open}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setForceEndConfirmation({ open: false, confirmText: "", error: undefined })
+                    }
+                }}
+            >
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-orange-100 dark:bg-orange-950 rounded-lg">
+                                <X className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                            </div>
+                            <DialogTitle>Force End Event?</DialogTitle>
+                        </div>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                            This will immediately end the event <span className="font-semibold text-foreground">"{event?.name}"</span> before
+                            its scheduled end time.
+                        </p>
+                        <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                            <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                                <span className="font-semibold">Warning:</span> Members will no longer be able to cast votes after the event is
+                                force ended.
+                            </p>
+                        </div>
+                        {forceEndConfirmation.error && (
+                            <div className="rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 p-3">
+                                <p className="text-xs text-red-800 dark:text-red-200">
+                                    <span className="font-semibold">Error:</span> {forceEndConfirmation.error}
+                                </p>
+                            </div>
+                        )}
+                        <div>
+                            <p className="text-sm text-muted-foreground mb-3">
+                                Type <span className="font-semibold text-foreground">"end"</span> to proceed:
+                            </p>
+                            <Input
+                                placeholder="end"
+                                value={forceEndConfirmation.confirmText}
+                                onChange={(e) => {
+                                    setForceEndConfirmation((prev) => ({ ...prev, confirmText: e.target.value }))
+                                    setForceEndConfirmation((prev) => ({ ...prev, error: undefined }))
+                                }}
+                                onKeyUp={(e) => {
+                                    if (e.key === "Enter" && forceEndConfirmation.confirmText.toLowerCase() === "end") {
+                                        submitForceEndEventAfterConfirmation()
+                                    }
+                                }}
+                                disabled={isForceEndingEvent}
+                                className="font-mono"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex gap-3 pt-4">
+                        <Button
+                            variant="outline"
+                            className="flex-1 bg-transparent"
+                            onClick={() => setForceEndConfirmation({ open: false, confirmText: "", error: undefined })}
+                            disabled={isForceEndingEvent}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            className="flex-1 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white"
+                            onClick={submitForceEndEventAfterConfirmation}
+                            disabled={forceEndConfirmation.confirmText.toLowerCase() !== "end" || isForceEndingEvent}
+                        >
+                            {isForceEndingEvent ? <LoadingSpinner size="sm" text="Ending..." /> : "Force End Event"}
                         </Button>
                     </div>
                 </DialogContent>

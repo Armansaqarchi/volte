@@ -86,10 +86,5 @@ func RunBallotProof() *contracts.VolteContractBallotProof {
 			Cx:   proofParts[6],
 			Cy:   proofParts[7],
 		},
-		Input:          publicInputs,
-		CommitmentX:    proofParts[8],
-		CommitmentY:    proofParts[9],
-		CommitmentPokX: proofParts[10],
-		CommitmentPokY: proofParts[11],
 	}
 }

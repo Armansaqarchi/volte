@@ -4,16 +4,16 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Calendar, Users, Vote } from "lucide-react"
+import { Plus, Calendar, Vote } from "lucide-react"
 import { getCurrentUser } from "@/lib/auth"
 import {getEvents, type Event, IsEventActive} from "@/lib/events"
 import { DashboardNav } from "@/components/dashboard-nav"
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [user, setUser] = useState(getCurrentUser())
+  const [user, setUser] = useState(() => getCurrentUser())
   const [events, setEvents] = useState<Event[]>([])
 
   useEffect(() => {

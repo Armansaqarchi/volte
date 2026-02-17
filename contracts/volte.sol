@@ -32,12 +32,7 @@
         struct BallotProof {
             Proof       Proof;
             // The public inputs to the circuit.
-            // [C1x0, C1x1, C1x2, C1y3, C1y0, C1y1, C1y2, C1y3, C2x0, C2x1, C2x2, C2y3, C2y0, C2y1, C2y2, C2y3]
-            uint256[16] Input;
-            uint256     CommitmentX;
-            uint256     CommitmentY;
-            uint256     CommitmentPokX;
-            uint256     CommitmentPokY;
+            uint256[4] Input;
         }
 
         struct MembershipProof {
@@ -70,6 +65,10 @@
         Ballot.BallotVerifier public ballot;
         Nullifier.NullifierVerifier public nullifier;
         Membership.MembershipVerifier public membership;
+
+        error NullifierProofInvalid();
+        error MembershipProofInvalid();
+        error BallotProofInvalid();
 
         constructor(
             address _ballot,
@@ -123,125 +122,146 @@
             return totalEventVotes[eventID];
         }
 
-        function addCiphertexts(
-            uint256[2] memory C1, // [x1, y1]
-            uint256[2] memory C2  // [x2, y2]
-        ) public view returns (uint256[2] memory Csum) {
-            bool success;
-            assembly ("memory-safe") {
-                let ptr := mload(0x40)
+        // ---- BabyJubJub point addition (twisted Edwards, affine) ----
 
-                mstore(ptr,         mload(C1))             // x1
-                mstore(add(ptr,32), mload(add(C1,32)))    // y1
-                mstore(add(ptr,64), mload(C2))            // x2
-                mstore(add(ptr,96), mload(add(C2,32)))    // y2
+        // circomlib babyjub constants (make sure these match your circuit!)
+        uint256 constant BABYJUB_Q =
+            21888242871839275222246405745257275088548364400416034343698204186575808495617;
+        uint256 constant BABYJUB_A = 168700;
+        uint256 constant BABYJUB_D = 168696;
 
-                success := staticcall(gas(), 0x06, ptr, 0x80, ptr, 0x40)
-
-                let csumPtr := Csum
-                mstore(csumPtr,        mload(ptr))          // x3
-                mstore(add(csumPtr,32), mload(add(ptr,32))) // y3
-                mstore(0x40, add(ptr, 0x80))
-            }
-
-            require(success, "ECADD failed");
-            return Csum;
+        function _submodQ(uint256 a, uint256 b) internal pure returns (uint256) {
+            unchecked { return addmod(a, BABYJUB_Q - (b % BABYJUB_Q), BABYJUB_Q); }
         }
+
+        function _modExp(uint256 base, uint256 exp, uint256 mod_) internal view returns (uint256 result) {
+            // bigModExp precompile 0x05
+            bytes memory input = abi.encodePacked(
+                uint256(32), uint256(32), uint256(32),
+                base, exp, mod_
+            );
+            bytes memory output = new bytes(32);
+            bool ok;
+            assembly ("memory-safe") {
+                ok := staticcall(gas(), 0x05, add(input, 32), mload(input), add(output, 32), 32)
+            }
+            require(ok, "modexp failed");
+            result = abi.decode(output, (uint256));
+        }
+
+        function _invQ(uint256 x) internal view returns (uint256) {
+            require(x != 0, "inv(0)");
+            return _modExp(x, BABYJUB_Q - 2, BABYJUB_Q);
+        }
+
+        /// @notice Adds two BabyJubJub affine points (x1,y1) + (x2,y2)
+        function _babyJubAdd(
+            uint256 x1, uint256 y1,
+            uint256 x2, uint256 y2
+        ) internal view returns (uint256 x3, uint256 y3) {
+            // x_num = x1*y2 + y1*x2
+            uint256 x_num = addmod(mulmod(x1, y2, BABYJUB_Q), mulmod(y1, x2, BABYJUB_Q), BABYJUB_Q);
+
+            // y_num = y1*y2 - a*x1*x2
+            uint256 y_num = _submodQ(
+                mulmod(y1, y2, BABYJUB_Q),
+                mulmod(BABYJUB_A, mulmod(x1, x2, BABYJUB_Q), BABYJUB_Q)
+            );
+
+            // t = d*x1*x2*y1*y2
+            uint256 t = mulmod(
+                BABYJUB_D,
+                mulmod(mulmod(x1, x2, BABYJUB_Q), mulmod(y1, y2, BABYJUB_Q), BABYJUB_Q),
+                BABYJUB_Q
+            );
+
+            // x_den = 1 + t
+            uint256 x_den = addmod(1, t, BABYJUB_Q);
+
+            // y_den = 1 - t
+            uint256 y_den = _submodQ(1, t);
+
+            // x3 = x_num / x_den
+            x3 = mulmod(x_num, _invQ(x_den), BABYJUB_Q);
+
+            // y3 = y_num / y_den
+            y3 = mulmod(y_num, _invQ(y_den), BABYJUB_Q);
+        }
+
 
         // No revert means the proof has been verified and the vote has been submitted.
         function Vote(VoteSubmission calldata proof) external{
             if (proof.proofs.membership.Input[0] != voteMerkleRoots[proof.eventID])
                 revert EventRootMismatch(voteMerkleRoots[proof.eventID], proof.proofs.membership.Input[0]);
 
-            nullifier.verifyProof(
+            bool nullifier_accepted = nullifier.verifyProof(
+                [proof.proofs.nullifier.Proof.Arx, proof.proofs.nullifier.Proof.Ary],
                 [
-                    proof.proofs.nullifier.Proof.Arx,
-                    proof.proofs.nullifier.Proof.Ary,
-                    // Notice the ordering of B point as the verifier expects them in big-endian order.
-                    proof.proofs.nullifier.Proof.Brx1,
-                    proof.proofs.nullifier.Proof.Brx0,
-                    proof.proofs.nullifier.Proof.Bry1,
-                    proof.proofs.nullifier.Proof.Bry0,
-                    proof.proofs.nullifier.Proof.Cx,
-                    proof.proofs.nullifier.Proof.Cy
+                    [proof.proofs.nullifier.Proof.Brx1, proof.proofs.nullifier.Proof.Brx0],
+                    [proof.proofs.nullifier.Proof.Bry1, proof.proofs.nullifier.Proof.Bry0]
                 ],
+                [proof.proofs.nullifier.Proof.Cx, proof.proofs.nullifier.Proof.Cy],
                 proof.proofs.nullifier.Input
             );
-            membership.verifyProof(
+            if (!nullifier_accepted) revert NullifierProofInvalid();
+
+            bool membership_accepted = membership.verifyProof(
+                [proof.proofs.membership.Proof.Arx, proof.proofs.membership.Proof.Ary],
                 [
-                    proof.proofs.membership.Proof.Arx,
-                    proof.proofs.membership.Proof.Ary,
-                    // Notice the ordering of B point as the verifier expects them in big-endian order.
-                    proof.proofs.membership.Proof.Brx1,
-                    proof.proofs.membership.Proof.Brx0,
-                    proof.proofs.membership.Proof.Bry1,
-                    proof.proofs.membership.Proof.Bry0,
-                    proof.proofs.membership.Proof.Cx,
-                    proof.proofs.membership.Proof.Cy
+                    [proof.proofs.membership.Proof.Brx1, proof.proofs.membership.Proof.Brx0],
+                    [proof.proofs.membership.Proof.Bry1, proof.proofs.membership.Proof.Bry0]
                 ],
+                [proof.proofs.membership.Proof.Cx, proof.proofs.membership.Proof.Cy],
                 proof.proofs.membership.Input
             );
+            if (!membership_accepted) revert MembershipProofInvalid();
 
-            ballot.verifyProof(
+            bool ballot_accepted = ballot.verifyProof(
+                [proof.proofs.ballot.Proof.Arx, proof.proofs.ballot.Proof.Ary],
                 [
-                    proof.proofs.ballot.Proof.Arx,
-                    proof.proofs.ballot.Proof.Ary,
-                    // Notice the ordering of B point as the verifier expects them in big-endian order.
-                    proof.proofs.ballot.Proof.Brx1,
-                    proof.proofs.ballot.Proof.Brx0,
-                    proof.proofs.ballot.Proof.Bry1,
-                    proof.proofs.ballot.Proof.Bry0,
-                    proof.proofs.ballot.Proof.Cx,
-                    proof.proofs.ballot.Proof.Cy
+                    [proof.proofs.ballot.Proof.Brx1, proof.proofs.ballot.Proof.Brx0],
+                    [proof.proofs.ballot.Proof.Bry1, proof.proofs.ballot.Proof.Bry0]
                 ],
-                [proof.proofs.ballot.CommitmentX, proof.proofs.ballot.CommitmentY],
-                [proof.proofs.ballot.CommitmentPokX, proof.proofs.ballot.CommitmentPokY],
+                [proof.proofs.ballot.Proof.Cx, proof.proofs.ballot.Proof.Cy],
                 proof.proofs.ballot.Input
             );
-            // Recombining into 256bit format for each coordination.
-            uint256 C1x = recombine([
-                uint64(proof.proofs.ballot.Input[0]),
-                uint64(proof.proofs.ballot.Input[1]),
-                uint64(proof.proofs.ballot.Input[2]),
-                uint64(proof.proofs.ballot.Input[3])
-            ]);
-            uint256 C1y = recombine([
-                uint64(proof.proofs.ballot.Input[4]),
-                uint64(proof.proofs.ballot.Input[5]),
-                uint64(proof.proofs.ballot.Input[6]),
-                uint64(proof.proofs.ballot.Input[7])
-            ]);
-            uint256 C2x = recombine([
-                uint64(proof.proofs.ballot.Input[8]),
-                uint64(proof.proofs.ballot.Input[9]),
-                uint64(proof.proofs.ballot.Input[10]),
-                uint64(proof.proofs.ballot.Input[11])
-            ]);
-            uint256 C2y = recombine([
-                uint64(proof.proofs.ballot.Input[12]),
-                uint64(proof.proofs.ballot.Input[13]),
-                uint64(proof.proofs.ballot.Input[14]),
-                uint64(proof.proofs.ballot.Input[15])
-            ]);
+            if (!ballot_accepted) revert BallotProofInvalid();
+
 
             // Preparing input parameters to perform tally + C.
             string memory eventID = proof.eventID;
             TallyScore storage tallyScore = tallyScores[eventID];
 
-            uint256[2] memory C1 = [C1x, C1y];
-            uint256[2] memory C2 = [C2x, C2y];
+            uint256[2] memory C1 = [proof.proofs.ballot.Input[0], proof.proofs.ballot.Input[1]];
+            uint256[2] memory C2 = [proof.proofs.ballot.Input[2], proof.proofs.ballot.Input[3]];
+
+            // IMPORTANT: BabyJubJub identity is (0,1). If you never initialized tallyScore,
+            // the default is (0,0) which is NOT a valid point. Treat (0,0) as "unset" and
+            // initialize to identity on first vote.
+            if (tallyScore.C1x == 0 && tallyScore.C1y == 0) {
+                tallyScore.C1x = 0;
+                tallyScore.C1y = 1;
+            }
+            if (tallyScore.C2x == 0 && tallyScore.C2y == 0) {
+                tallyScore.C2x = 0;
+                tallyScore.C2y = 1;
+            }
+
             uint256[2] memory tallyC1 = [tallyScore.C1x, tallyScore.C1y];
             uint256[2] memory tallyC2 = [tallyScore.C2x, tallyScore.C2y];
-            uint256[2] memory resultC1 = addCiphertexts(C1, tallyC1);
-            uint256[2] memory resultC2 = addCiphertexts(C2, tallyC2);
+
+            // Add BabyJubJub points: result = C + tallyC
+            (uint256 r1x, uint256 r1y) = _babyJubAdd(C1[0], C1[1], tallyC1[0], tallyC1[1]);
+            (uint256 r2x, uint256 r2y) = _babyJubAdd(C2[0], C2[1], tallyC2[0], tallyC2[1]);
 
             // Update tally score.
-            tallyScore.C1x = resultC1[0];
-            tallyScore.C1y = resultC1[1];
-            tallyScore.C2x = resultC2[0];
-            tallyScore.C2y = resultC2[1];
+            tallyScore.C1x = r1x;
+            tallyScore.C1y = r1y;
+            tallyScore.C2x = r2x;
+            tallyScore.C2y = r2y;
 
             totalEventVotes[eventID] = totalEventVotes[eventID] + 1;
+
         }
 
         function recombine(uint64[4] memory limbs) internal pure returns (uint256 x) {

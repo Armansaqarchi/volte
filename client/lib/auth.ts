@@ -1,5 +1,6 @@
 // Authentication utilities
-import {runWasm} from "@/lib/zkproof/go/main";
+import { buildMimc7 } from "circomlibjs";
+
 
 export interface User {
   commitment: string
@@ -10,6 +11,7 @@ export function getCurrentUser(): User | null {
   if (typeof window === "undefined") return null
 
   const userStr = localStorage.getItem("currentUser")
+  if (!userStr) return null
   return userStr ? JSON.parse(userStr) : null
 }
 
@@ -38,7 +40,39 @@ export function generateRandomBn254(): string {
   return x.toString();
 }
 
-export const toCommitment = async (randomHex: string) => {
-  const hash = await runWasm("getMIMCHash", [`--secret=${randomHex}`])
-  return hash as string
+let _mimc7Promise: ReturnType<typeof buildMimc7> | null = null;
+
+async function getMimc7() {
+  if (!_mimc7Promise) _mimc7Promise = buildMimc7();
+  return _mimc7Promise;
+}
+
+export async function mimc7Hash(inputs: Array<bigint>, key: bigint = 0n): Promise<bigint> {
+  const mimc7 = await getMimc7();
+
+  // Normalize into the field (helps avoid negative / oversized inputs)
+  const F = mimc7.F;
+  const inF = inputs.map((x) => F.e(x));
+
+  // circomlibjs exposes multiHash([...], key)
+  // (commonly used with key = 0)
+  const out = mimc7.multiHash(inF, F.e(key));
+
+  // multiHash returns an F element; convert to bigint
+  return F.toObject(out) as bigint;
+}
+
+/** Convenience: return 0x-prefixed hex (32 bytes-ish, not fixed-width) */
+export async function MimC7Hash(inputs: Array<bigint>): Promise<string> {
+  const h = await mimc7Hash(inputs, 0n);
+  return h.toString(10);
+}
+
+export function getCommitment() {
+  const currentUserData = localStorage.getItem("currentUser")
+  if (!currentUserData) {
+    return null
+  }
+
+  return JSON.parse(currentUserData).commitment
 }

@@ -22,6 +22,10 @@ export function DashboardNav({ user }: { user: UserType }) {
     router.push("/")
   }
 
+  if (!user) {
+    router.push("/login")
+  }
+
   return (
     <header className="border-b border-border bg-card">
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -39,8 +43,8 @@ export function DashboardNav({ user }: { user: UserType }) {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
               <div className="flex flex-col">
-                <span className="font-medium">{user.name}</span>
-                <span className="text-xs text-muted-foreground">{user.email}</span>
+                <span className="font-medium">{user.username}</span>
+                <span className="text-xs text-muted-foreground">{user.commitment}</span>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

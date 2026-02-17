@@ -12,6 +12,7 @@ require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/go-playground/assert/v2 v2.2.0
 	github.com/google/uuid v1.6.0
+	github.com/iden3/go-iden3-crypto/v2 v2.0.0
 	github.com/minio/sha256-simd v1.0.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.6

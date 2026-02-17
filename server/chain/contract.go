@@ -9,10 +9,13 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/iden3/go-iden3-crypto/v2/babyjub"
 	"log/slog"
+	"math"
 	"math/big"
 	"strconv"
 	"volte/backend/chain/contracts"
+	"volte/backend/crypto/utils"
 )
 
 var (
@@ -58,8 +61,16 @@ type NullifierProof struct {
 }
 
 var (
-	chainID = flag.String("eth_based_network_chain_id", "11155111", "Chain Commitment")
+	// ChainID, unique for each ethereum network, default set to sepolia network.
+	chainID           = flag.String("eth_based_network_chain_id", "11155111", "Chain Commitment")
+	ElgamalPrivateKey = flag.String("elgamal_private_key", "20", "elgamal encryption private key")
 )
+
+func NewIntFromString(str string) *big.Int {
+	key := big.Int{}
+	key.SetString(str, 10)
+	return &key
+}
 
 type VolteSessionHandler interface {
 	Vote(proof contracts.VolteContractVoteSubmission) (*types.Transaction, error)
@@ -75,13 +86,20 @@ type ContractHandler interface {
 	GetClient() *ethclient.Client
 	GetFromAddress() common.Address
 	GetVolteContract() VolteSessionHandler
+	GetTallyScore(eventID string) (*TallyScore, error)
+}
+
+type TallyScore struct {
+	Score uint64
+	Total uint64
 }
 
 type EthereumContractHandler struct {
 	client      *ethclient.Client // Ethereum client for RPC communication.
 	fromAddress common.Address    // Server wallet address.
 	// List of contracts.
-	volteContract VolteSessionHandler
+	volteContract   VolteSessionHandler
+	tallyPrivateKey *big.Int
 }
 
 func NewEthereumChainHandler() *EthereumContractHandler {
@@ -111,6 +129,12 @@ func NewEthereumChainHandler() *EthereumContractHandler {
 		slog.Error(fmt.Sprintf("Failed to create contract. err : %s", err))
 		panic(err)
 	}
+	// Load elgamal encryption private key
+	tallyPrivateKey := &big.Int{}
+	tallyPrivateKey, ok := tallyPrivateKey.SetString(*ElgamalPrivateKey, 10)
+	if !ok {
+		panic("Failed to parse elgamal private key")
+	}
 
 	return &EthereumContractHandler{
 		client:      client,
@@ -124,6 +148,7 @@ func NewEthereumChainHandler() *EthereumContractHandler {
 			},
 			TransactOpts: *transactionOpsAuth,
 		},
+		tallyPrivateKey: tallyPrivateKey,
 	}
 }
 
@@ -142,4 +167,43 @@ func (e *EthereumContractHandler) GetFromAddress() common.Address {
 func (e *EthereumContractHandler) VerifyAndSubmitVote(ballotProof *BallotProof,
 	membershipProof *MembershipProof, proof *NullifierProof) error {
 	return nil
+}
+
+func (e *EthereumContractHandler) GetTallyScore(eventID string) (*TallyScore, error) {
+	scores, err := e.GetVolteContract().GetTallyScore(eventID)
+	if err != nil {
+		slog.Error("Failed to get tally score")
+		return nil, fmt.Errorf("failed to get tally score, %w", err)
+	}
+
+	votes, err := e.volteContract.GetTotalEventVotes(eventID)
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to get total votes, err : %s", err.Error()))
+		return nil, fmt.Errorf("failed to get total votes, %w", err)
+	}
+
+	// Contract returns BabyJubJub points (C1, C2) as 4 field elements.
+	// scores[0]=C1.x, scores[1]=C1.y, scores[2]=C2.x, scores[3]=C2.y
+	slog.Info(
+		scores[0].String(),
+		scores[1].String(),
+		scores[2].String(),
+		scores[3].String(),
+	)
+	C1 := babyjub.NewPoint()
+	C2 := babyjub.NewPoint()
+	C1.X = NewIntFromString(scores[0].String())
+	C1.Y = NewIntFromString(scores[1].String())
+	C2.X = NewIntFromString(scores[2].String())
+	C2.Y = NewIntFromString(scores[3].String())
+	score, err := utils.DecryptM_BSGS(C1, C2, NewIntFromString(*ElgamalPrivateKey), uint64(math.Pow(2, 32)))
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to decrypt tally score, err : %s", err.Error()))
+		return nil, fmt.Errorf("failed to decrypt tally score, %w", err)
+	}
+
+	return &TallyScore{
+		Score: score,
+		Total: votes.Uint64(),
+	}, nil
 }

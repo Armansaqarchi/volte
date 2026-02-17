@@ -29,11 +29,6 @@ export default function CreateEventPage() {
   const [options, setOptions] = useState(["", ""])
   const [isLoading, setIsLoading] = useState(false)
 
-  if (!user) {
-    router.push("/login")
-    return null
-  }
-
   const addOption = () => {
     setOptions([...options, ""])
   }

@@ -17,10 +17,10 @@ import (
 	"net/http"
 	"time"
 	"volte/backend/chain"
-	"volte/backend/chain/contracts"
 	"volte/backend/crypto/utils"
 	"volte/backend/databases"
 	"volte/backend/models"
+	"volte/backend/models/service/dto"
 )
 
 var (
@@ -43,12 +43,6 @@ func NewVotingService(mongoClient *databases.MongoClient, contractManager chain.
 		mongoClient:     mongoClient,
 		contractHandler: contractManager,
 	}
-}
-
-func newBigIntFromString(str string) *big.Int {
-	bigInt := big.NewInt(0)
-	bigInt.SetString(str, 10)
-	return bigInt
 }
 
 func (v *VotingService) isEventValid(ctx *gin.Context, event *models.Event) bool {
@@ -308,8 +302,17 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 
 	commitmentsTree, err := merkletree.New(
 		&merkletree.Config{Mode: merkletree.ModeProofGenAndTreeBuild, HashFunc: func(args ...[]byte) ([]byte, error) {
-			hash, err := utils.MimcHash(args...)
-			return []byte(hash), err
+			// For gnarks internal MimC hash, use `utils.MimcHash`
+			var argsBigInt []*big.Int
+			for _, arg := range args {
+				argString, ok := big.NewInt(0).SetString(string(arg), 10)
+				if !ok {
+					return nil, fmt.Errorf("failed to create merkle tree")
+				}
+				argsBigInt = append(argsBigInt, argString)
+			}
+			hash, err := utils.MiMC7MultiHashCircomFr(argsBigInt)
+			return []byte(hash.String()), err
 		}, DisableLeafHashing: true,
 		},
 		commitments,
@@ -330,7 +333,6 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 	fmt.Println("commitments : ", commitments)
 	fmt.Println("root : ", string(commitmentsTree.Root))
 
-	fmt.Println(string(commitmentsTree.Root))
 	eventCommitmentTree := &models.EventTree{ID: eventID, Tree: commitmentsTree}
 	if _, err := eventsCollection.UpdateOne(ctx, bson.M{"_id": event.ID}, bson.M{"$set": event}); err != nil {
 		slog.Error(fmt.Sprintf("Failed to store event %s, err : %s", event.ID, err.Error()))
@@ -363,10 +365,16 @@ func (v *VotingService) StartEvent(ctx *gin.Context) {
 		})
 		return
 	}
+
 	root, ok := big.NewInt(0).SetString(string(eventCommitmentTree.Tree.Root), 10)
 	if !ok {
-		slog.Error(fmt.Sprintf("Failed to convert event root to string, err : %s", err))
+		slog.Error("Failed to Set root string, err")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": fmt.Sprintf("Failed to set event hash on root"),
+		})
+		return
 	}
+	fmt.Println("Root : ", root)
 	if _, err := v.contractHandler.GetVolteContract().SetVoteMerkleRoot(eventID, root); err != nil {
 		slog.Error(fmt.Sprintf("Failed to set vote merkle root, err : %s", err.Error()))
 		ctx.JSON(http.StatusInternalServerError, gin.H{
@@ -413,7 +421,6 @@ func (v *VotingService) UserEvents(ctx *gin.Context) {
 func (v *VotingService) MembershipDetails(ctx *gin.Context) {
 	session := sessions.Default(ctx)
 	member := models.Commitment(session.Get("user").(string))
-	fmt.Println("member : ", string(member))
 	eventId := ctx.Param("id")
 	if eventId == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid event_id"})
@@ -427,12 +434,6 @@ func (v *VotingService) MembershipDetails(ctx *gin.Context) {
 	}
 
 	commitmentIdx := eventTree.LeafMap[string(member)]
-	fmt.Println("idx : ", commitmentIdx)
-	fmt.Println(eventTree.Proofs[commitmentIdx].Path)
-	for _, x := range eventTree.Proofs[commitmentIdx].Siblings {
-		fmt.Println("Sibling : ", string(x))
-	}
-	fmt.Println(eventTree.Proofs[commitmentIdx])
 	ctx.JSON(http.StatusOK, gin.H{
 		"data": gin.H{
 			"root":  eventTree.Root,
@@ -573,9 +574,13 @@ func (v *VotingService) RemoveMemberFromEvent(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "Member successfully added."})
 }
 
+func (v *VotingService) parseVolteContractVoteSubmission() {
+
+}
+
 func (v *VotingService) Vote(ctx *gin.Context) {
-	var proofs contracts.VolteContractVoteSubmission
-	if err := ctx.ShouldBindJSON(&proofs); err != nil {
+	var proofsDto dto.VolteContractVoteSubmissionDTO
+	if err := ctx.ShouldBindJSON(&proofsDto); err != nil {
 		slog.Error(fmt.Sprintf("Failed to bind json, err : %s", err.Error()))
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"status":  "failure",
@@ -583,8 +588,10 @@ func (v *VotingService) Vote(ctx *gin.Context) {
 		})
 		return
 	}
+	proofs := dto.ConvertVolteContractVoteSubmissionDTO(proofsDto)
 	slog.Info(fmt.Sprintf("proof : %v", proofs))
-	if txn, err := v.contractHandler.GetVolteContract().Vote(proofs); err != nil {
+	fmt.Println(proofs.Proofs)
+	if txn, err := v.contractHandler.GetVolteContract().Vote(*proofs); err != nil {
 		slog.Error(fmt.Sprintf("Failed to verify vote, err : %s", err.Error()))
 		ctx.JSON(http.StatusInternalServerError, gin.H{"status": "failure"})
 	} else {
@@ -597,29 +604,17 @@ func (v *VotingService) Vote(ctx *gin.Context) {
 
 func (v *VotingService) GetTallyScore(ctx *gin.Context) {
 	eventID := ctx.Param("id")
-	scores, err := v.contractHandler.GetVolteContract().GetTallyScore(eventID)
+	tallyScore, err := v.contractHandler.GetTallyScore(eventID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get tally score"})
+		slog.Error("Failed to get tally score, err : %w", err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"status": "failure",
+		})
 		return
 	}
-	votes, err := v.contractHandler.GetVolteContract().GetTotalEventVotes(eventID)
-	if err != nil {
-		slog.Error(fmt.Sprintf("Failed to get total votes, err : %s", err.Error()))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get tally total votes"})
-		return
-	}
-	C1, _ := utils.MakeG1Affine(scores[0].String(), scores[1].String())
-	C2, _ := utils.MakeG1Affine(scores[2].String(), scores[3].String())
-	// The private key used to decrypt the elgamal encryption.
-	// This is bound and is derived before the encryption phase.
-	C1x := utils.G1MulAffine(&C1, big.NewInt(30))
-	// m.(G) = C2 - x.(C1)
-	M := utils.G1AddAffine(&C2, C1x.Neg(&C1x))
-	G1 := utils.GenerateBaseECC()
-	// for calculating the raw m, we use an optimized brute force approach called BSGS.
-	// The Baby step giant step algorithm, calculates the raw m in O(squared(n)).
-	// In our case, it takes about O(radical(2 ** n)) which in case is about 2*16 operations.
-	got, _ := utils.BSGS(M, G1, uint64(math.Pow(2, 32)))
-
-	ctx.JSON(http.StatusOK, gin.H{"score": got, "total": votes.String()})
+	slog.Info("Got status : ", tallyScore)
+	ctx.JSON(http.StatusOK, gin.H{
+		"score": tallyScore.Score,
+		"total": tallyScore.Total,
+	})
 }

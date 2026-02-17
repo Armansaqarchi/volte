@@ -1,9 +1,11 @@
 .idea
 */.env
-*/*.bin
-*/*.abi
+*.bin
+*.abi
 *keys
 */node_modules
 /server/cmd/proof/keys
 client/.next
+/circom/tau/
 *.wasm
+circom/*/build

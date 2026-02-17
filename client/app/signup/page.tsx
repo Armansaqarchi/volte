@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Shield, Copy, Check } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
-import {toCommitment, generateRandomBn254} from "@/lib/auth"
+import {MimC7Hash, generateRandomBn254} from "@/lib/auth"
 
 export default function SignupPage() {
   const router = useRouter()
@@ -57,7 +57,7 @@ export default function SignupPage() {
         },
         body: JSON.stringify({
           username: username,
-          commitment: await toCommitment(privateKey),
+          commitment: await MimC7Hash([BigInt(privateKey)]),
           password: password,
         }),
         credentials: "include",
@@ -65,7 +65,7 @@ export default function SignupPage() {
 
       if (!response.ok) throw new Error("Failed to fetch response.")
       const data = await response.json()
-      localStorage.setItem("currentUser", JSON.stringify(data))
+      localStorage.setItem("currentUser", JSON.stringify(data.data))
       localStorage.setItem("privateKey", privateKey)
       toast({
         title: "Account created!",

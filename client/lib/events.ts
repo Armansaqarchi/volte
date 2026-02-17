@@ -9,6 +9,7 @@ export interface Event {
   admin       : string
   duration    : number
   startTime   : Date | null
+  forceEnd    : boolean
   voteOptions : string[]
   voteMembers : string[]
   tally       : Map<string, number>
@@ -82,6 +83,7 @@ export async function createEvent(data: {
     admin: data.admin,
     duration: data.duration,
     startTime: null,
+    forceEnd: false,
     voteOptions: data.voteOptions,
     voteMembers: [],
     tally: new Map<string, number>(),

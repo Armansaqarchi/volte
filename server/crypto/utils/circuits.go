@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fp"
@@ -10,6 +11,8 @@ import (
 	bn254_groth16 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_emulated"
 	"github.com/consensys/gnark/std/math/emulated"
+	"github.com/iden3/go-iden3-crypto/v2/babyjub"
+	"github.com/iden3/go-iden3-crypto/v2/mimc7"
 	"io"
 	"log/slog"
 	"math"
@@ -47,54 +50,6 @@ func MakeG1Affine(xStr, yStr string) (bn254.G1Affine, error) {
 
 	return bn254.G1Affine{X: X, Y: Y}, nil
 }
-
-// BSGS finds integer m in [0, B) such that M = m*G.
-// Returns m and a boolean flag indicating success.
-func BSGS(M, G bn254.G1Affine, B uint64) (uint64, bool) {
-	if B == 0 {
-		return 0, false
-	}
-
-	n := uint64(math.Ceil(math.Sqrt(float64(B)))) // √B
-
-	H := make(map[string]uint64, n)
-	var jG bn254.G1Jac
-	jG.FromAffine(&bn254.G1Affine{}) // start from identity
-	var step bn254.G1Jac
-	step.FromAffine(&G)
-	var tmpAff bn254.G1Affine
-
-	tmpAff.FromJacobian(&jG)
-	H[string(tmpAff.Marshal())] = 0
-
-	for j := uint64(1); j < n; j++ {
-		jG.AddAssign(&step)
-		tmpAff.FromJacobian(&jG)
-		H[string(tmpAff.Marshal())] = j
-	}
-
-	var nG bn254.G1Affine
-	nG.ScalarMultiplication(&G, new(big.Int).SetUint64(n))
-
-	var Q bn254.G1Jac
-	Q.FromAffine(&M)
-	var minusnG bn254.G1Affine
-	minusnG.Neg(&nG)
-
-	for i := uint64(0); i <= n; i++ {
-		tmpAff.FromJacobian(&Q)
-		if j, ok := H[string(tmpAff.Marshal())]; ok {
-			m := i*n + j
-			if m < B {
-				return m, true
-			}
-		}
-		Q.AddMixed(&minusnG)
-	}
-
-	return 0, false
-}
-
 func GenerateBaseECC() bn254.G1Affine {
 	_, _, g1, _ := bn254.Generators()
 	return g1
@@ -182,4 +137,109 @@ func MimcHash(inputs ...[]byte) (string, error) {
 	fmt.Println("Result : ", outFe.BigInt(new(big.Int)).String())
 
 	return outFe.BigInt(new(big.Int)).String(), nil
+}
+
+var frModulus, _ = new(big.Int).SetString(
+	"21888242871839275222246405745257275088548364400416034343698204186575808495617",
+	10,
+)
+
+func ReduceToFr(x *big.Int) *big.Int {
+	if x == nil {
+		return new(big.Int)
+	}
+	z := new(big.Int).Mod(new(big.Int).Set(x), frModulus)
+	if z.Sign() < 0 {
+		z.Add(z, frModulus)
+	}
+	return z
+}
+
+func NewBigIntFromString(str string) *big.Int {
+	bigInt := big.NewInt(0)
+	bigInt.SetString(str, 10)
+	return bigInt
+}
+
+func MiMC7MultiHashCircomFr(inputs []*big.Int) (*big.Int, error) {
+	if len(inputs) == 0 {
+		return nil, errors.New("inputs must be non-empty")
+	}
+
+	reduced := make([]*big.Int, len(inputs))
+	for i := range inputs {
+		reduced[i] = ReduceToFr(inputs[i])
+	}
+	// nil key => k = 0
+	return mimc7.Hash(reduced, nil)
+
+}
+
+func DecryptM_BSGS(C1, C2 *babyjub.Point, privX *big.Int, max uint64) (uint64, error) {
+	if max == 0 {
+		return 0, errors.New("max must be > 0")
+	}
+
+	// Generator used by iden3 babyjub: B8 (base point * 8, subgroup generator). :contentReference[oaicite:4]{index=4}
+	G := babyjub.B8
+
+	// BN254 Fr modulus (used by BabyJubJub in circomlib/iden3). :contentReference[oaicite:5]{index=5}
+	q, _ := new(big.Int).SetString(
+		"21888242871839275222246405745257275088548364400416034343698204186575808495617",
+		10,
+	)
+
+	// Helper: affine add via projective (since affine Point has no Add method). :contentReference[oaicite:6]{index=6}
+	addAffine := func(a, b *babyjub.Point) *babyjub.Point {
+		pa := a.Projective()
+		pb := b.Projective()
+		sum := babyjub.NewPointProjective().Add(pa, pb).Affine()
+		return sum
+	}
+
+	// Helper: negate a point on twisted Edwards: -(x,y) = (-x mod q, y)
+	negAffine := func(p *babyjub.Point) *babyjub.Point {
+		nx := new(big.Int).Neg(p.X)
+		nx.Mod(nx, q)
+		return &babyjub.Point{X: nx, Y: new(big.Int).Set(p.Y)}
+	}
+
+	// 1) H = C2 - x*C1
+	S := babyjub.NewPoint().Mul(privX, C1) // S = x*C1 :contentReference[oaicite:7]{index=7}
+	H := addAffine(C2, negAffine(S))       // H = C2 - S
+
+	// 2) BSGS parameters
+	mStep := uint64(math.Ceil(math.Sqrt(float64(max))))
+	if mStep == 0 {
+		return 0, errors.New("invalid step size")
+	}
+
+	// 3) Baby steps: store j*G for j in [0, mStep)
+	babies := make(map[[32]byte]uint64, mStep)
+
+	acc := babyjub.NewPoint().Mul(big.NewInt(0), G) // 0*G (identity)
+	for j := uint64(0); j < mStep; j++ {
+		babies[acc.Compress()] = j // canonical key :contentReference[oaicite:8]{index=8}
+		acc = addAffine(acc, G)
+	}
+
+	// 4) Giant steps: look for H - i*(mStep*G) in baby table
+	mG := babyjub.NewPoint().Mul(new(big.Int).SetUint64(mStep), G) // mStep*G
+	negmG := negAffine(mG)
+
+	limit := uint64(math.Ceil(float64(max) / float64(mStep)))
+	cur := H
+
+	for i := uint64(0); i <= limit; i++ {
+		if j, ok := babies[cur.Compress()]; ok {
+			m := i*mStep + j
+			if m < max {
+				return m, nil
+			}
+			return 0, errors.New("match found but m out of range (increase max?)")
+		}
+		cur = addAffine(cur, negmG) // cur -= mG
+	}
+
+	return 0, errors.New("m not found in range; check ciphertext encoding or max")
 }

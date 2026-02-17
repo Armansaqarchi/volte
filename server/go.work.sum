@@ -77,6 +77,8 @@ github.com/consensys/compress v0.2.5/go.mod h1:pyM+ZXiNUh7/0+AUjUf9RKUM6vSH7T/fs
 github.com/containerd/typeurl/v2 v2.2.0 h1:6NBDbQzr7I5LHgp34xAXYF5DOTQDn05X58lsPEmzLso=
 github.com/containerd/typeurl/v2 v2.2.0/go.mod h1:8XOOxnyatxSWuG8OfsZXVnAF4iZfedjS/8UHSPJnX4g=
 github.com/coreos/go-systemd/v22 v22.5.0 h1:RrqgGjYQKalulkV8NGVIfkXQf6YYmOyiJKk8iXXhfZs=
+github.com/dchest/blake512 v1.0.0 h1:oDFEQFIqFSeuA34xLtXZ/rWxCXdSjirjzPhey5EUvmA=
+github.com/dchest/blake512 v1.0.0/go.mod h1:FV1x7xPPLWukZlpDpWQ88rF/SFwZ5qbskrzhLMB92JI=
 github.com/dlclark/regexp2 v1.7.0 h1:7lJfhqlPssTb1WQx4yvTHN0uElPEv52sbaECrAQxjAo=
 github.com/dlclark/regexp2 v1.7.0/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/donovanhide/eventsource v0.0.0-20210830082556-c59027999da0 h1:C7t6eeMaEQVy6e8CarIhscYQlNmw5e3G36y7l7Y21Ao=
