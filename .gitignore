@@ -9,3 +9,4 @@ client/.next
 /circom/tau/
 *.wasm
 circom/*/build
+/contracts/chain/data

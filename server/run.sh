@@ -1,0 +1,1 @@
+/app/server start $(cat /data/.env | tr '\n' ' ')

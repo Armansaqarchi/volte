@@ -1,0 +1,13 @@
+services:
+  geth:
+    image: ethereum/client-go:v1.10.26
+    container_name: geth-dev
+    restart: unless-stopped
+    ports:
+      - "8545:8545" # HTTP-RPC
+      - "8546:8546" # WS
+    volumes:
+      - ./data:/data
+      - ./genesis.json:/data/genesis.json:ro
+      - ./start-geth.sh:/start-geth.sh:ro
+    entrypoint: ["/bin/sh", "/start-geth.sh"]

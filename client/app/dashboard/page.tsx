@@ -24,7 +24,6 @@ export default function DashboardPage() {
       }
 
       const events = await getEvents()
-      console.log(events)
       setEvents(events)
     }
     loadEvents()
@@ -32,7 +31,7 @@ export default function DashboardPage() {
 
   if (!user) return null
 
-  const myEvents = events.filter((e) => e.admin == user.commitment)
+  const myEvents = events
   const activeEvents = events.filter((e) => IsEventActive(e))
   return (
     <div className="min-h-screen bg-background">

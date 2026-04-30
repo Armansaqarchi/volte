@@ -29,16 +29,6 @@ export default function CreateEventPage() {
   const [options, setOptions] = useState(["", ""])
   const [isLoading, setIsLoading] = useState(false)
 
-  const addOption = () => {
-    setOptions([...options, ""])
-  }
-
-  const removeOption = (index: number) => {
-    if (options.length > 2) {
-      setOptions(options.filter((_, i) => i !== index))
-    }
-  }
-
   const updateOption = (index: number, value: string) => {
     const newOptions = [...options]
     newOptions[index] = value
@@ -175,7 +165,7 @@ export default function CreateEventPage() {
                     Specify how long the event will remain active after starting
                   </p>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     <div className="space-y-2">
                       <Label htmlFor="months" className="text-xs text-muted-foreground">
                         Months
@@ -222,22 +212,6 @@ export default function CreateEventPage() {
                           className="text-center"
                       />
                     </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="seconds" className="text-xs text-muted-foreground">
-                        Seconds
-                      </Label>
-                      <Input
-                          id="seconds"
-                          type="number"
-                          min="0"
-                          max="59"
-                          placeholder="0"
-                          value={seconds}
-                          onChange={(e) => setSeconds(e.target.value)}
-                          className="text-center"
-                      />
-                    </div>
                   </div>
 
                   {(months || days || hours || seconds) && (
@@ -269,10 +243,6 @@ export default function CreateEventPage() {
                         )}
                       </div>
                   ))}
-                  <Button type="button" variant="outline" onClick={addOption} className="w-full bg-transparent">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Option
-                  </Button>
                 </div>
 
                 <div className="flex gap-3 pt-4">

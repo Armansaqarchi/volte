@@ -8,6 +8,7 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/txaty/go-merkletree"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -34,14 +35,19 @@ var (
 
 type VotingService struct {
 	mongoClient     *databases.MongoClient
+	redisClient     *databases.RedisClientProvider
 	contractHandler chain.ContractHandler
 }
 
-func NewVotingService(mongoClient *databases.MongoClient, contractManager chain.ContractHandler) *VotingService {
+func NewVotingService(
+	mongoClient *databases.MongoClient,
+	contractManager chain.ContractHandler,
+	redis *databases.RedisClientProvider) *VotingService {
 
 	return &VotingService{
 		mongoClient:     mongoClient,
 		contractHandler: contractManager,
+		redisClient:     redis,
 	}
 }
 
@@ -90,6 +96,13 @@ func (v *VotingService) CreateEvent(ctx *gin.Context) {
 		slog.Error(fmt.Sprintf("Invalid request to create event: %s", err.Error()))
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid input: " + err.Error()})
 		return
+	}
+
+	// events with more than two options are not implemented yet.
+	if len(req.VoteOptions) > 2 {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "votings can only have 2 options for now",
+		})
 	}
 
 	event := models.Event{
@@ -589,6 +602,23 @@ func (v *VotingService) Vote(ctx *gin.Context) {
 		return
 	}
 	proofs := dto.ConvertVolteContractVoteSubmissionDTO(proofsDto)
+	fmt.Println(fmt.Sprintf("event:%s:voter:%s", proofs.EventID, proofs.Proofs.Nullifier.Input[2].String()))
+	// Third element of nullifier input represents the actual nullifier hash
+	status := v.redisClient.RedisClient.SetArgs(ctx, fmt.Sprintf(
+		"event:%s:voter:%s",
+		proofs.EventID, proofs.Proofs.Nullifier.Input[2].String()),
+		1, redis.SetArgs{Mode: string(redis.NX)})
+	// Nullifier already exists
+	if errors.Is(status.Err(), redis.Nil) {
+		ctx.JSON(http.StatusAlreadyReported, gin.H{
+			"status":  "failure",
+			"message": "nullifier hash already exists",
+		})
+		return
+	} else if status.Err() != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"status": "failure"})
+		return
+	}
 	slog.Info(fmt.Sprintf("proof : %v", proofs))
 	fmt.Println(proofs.Proofs)
 	if txn, err := v.contractHandler.GetVolteContract().Vote(*proofs); err != nil {

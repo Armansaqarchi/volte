@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   mongo:
-    image: docker.arvancloud.ir/mongo:7.0
+    image: mongo
     container_name: mongo
     restart: unless-stopped
     ports:
@@ -16,9 +16,37 @@ services:
     networks:
       - backend
 
+  redis:
+    image: redis:7.2
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    environment:
+      ENV_REDIS_PASSWORD: "redis_pass"
+    networks:
+      - backend
+  app:
+    build: .
+    container_name: app
+    restart: unless-stopped
+    depends_on:
+      - mongo
+      - redis
+    volumes:
+      - ./.env:/data/.env
+    ports:
+      - "8000:8080"
+    networks:
+      - backend
+
 volumes:
   mongo_data:
   mongo_config:
+  redis_data:
 
 networks:
   backend:

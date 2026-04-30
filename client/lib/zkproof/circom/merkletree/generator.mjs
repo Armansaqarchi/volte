@@ -8,20 +8,17 @@ async function fetchArrayBuffer(path) {
 }
 
 async function generateMerkleProof(input){
-    console.log("here")
+
     const wasmBuffer = await fetchArrayBuffer("/zk/merkletree/merkle.wasm");
     const zkeyBuffer = await fetchArrayBuffer("/zk/merkletree/merkle_final.zkey");
-
     const witnessCalculator = await wcBuilder(wasmBuffer);
-
     const wtnsBuff = await witnessCalculator.calculateWTNSBin(input, 0);
-
 
     const { proof, publicSignals } = await snarkjs.groth16.prove(
         new Uint8Array(zkeyBuffer),
         wtnsBuff
     );
-    console.log("Done here")
+    console.log("21rwafsgd")
     return {
         proof: {
             Arx:  proof.pi_a[0],

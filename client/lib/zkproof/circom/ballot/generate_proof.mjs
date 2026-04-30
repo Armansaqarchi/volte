@@ -42,7 +42,6 @@ async function makeCiphertext({ M, Gx, Gy, Yx, Yy }) {
     const Y = [F.e(BigInt(Yx)), F.e(BigInt(Yy))];
 
     const K = randScalarBelow(babyjub.subOrder);
-    console.log("K : ", K)
     const C1 = babyjub.mulPointEscalar(G, K);
     const kY = babyjub.mulPointEscalar(Y, K);
     const C2 = (m === 0n) ? kY : babyjub.addPoint(kY, G);
@@ -64,10 +63,9 @@ const Yy = "21825033186726430338019907128549959920138456209872775056787107207311
 
 export async function generateBallotProof(M) {
     const input = await makeCiphertext({ M, Gx, Gy, Yx, Yy });
-    console.log(input)
     const wasmBuffer = await fetchArrayBuffer("/zk/ballot/ballot.wasm");
     const zkeyBuffer = await fetchArrayBuffer("/zk/ballot/ballot_final.zkey");
-    console.log(input.C1x, input.C1y, input.C2x, input.C2y)
+
     const witnessCalculator = await wcBuilder(wasmBuffer);
     const wtnsBuff = await witnessCalculator.calculateWTNSBin(input, 0);
     const { proof, publicSignals } = await snarkjs.groth16.prove(

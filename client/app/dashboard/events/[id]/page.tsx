@@ -25,12 +25,8 @@ import { getEvent, type Event, IsEventActive, IsEventStarted } from "@/lib/event
 import { DashboardNav } from "@/components/dashboard-nav"
 import { toast } from "@/hooks/use-toast"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
-import { runWasm } from "@/lib/zkproof/go/main"
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart"
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts"
-import generateBallotProof from "@/lib/zkproof/circom/ballot/generate_proof.mjs"
-import generateMerkleProof from "@/lib/zkproof/circom/merkletree/generator.mjs";
-import generateNullifier from "@/lib/zkproof/circom/nullifier/generateNullifier.mjs";
 
 type VoteResults = {
     option: string
@@ -42,7 +38,7 @@ type VoteResults = {
 const CHART_COLORS = [
     "hsl(221, 83%, 53%)", // Blue
     "hsl(142, 76%, 36%)", // Green
-    "hsl(262, 83%, 58%)", // Purple
+    "hsl(0,0%,21%)", // Purple
     "hsl(31, 97%, 52%)", // Orange
     "hsl(346, 87%, 49%)", // Red
 ]
@@ -139,23 +135,29 @@ export default function EventDetailPage() {
                 return
             }
             const data = await response.json()
-
-            const score = Number(data.score)
-            const total = Number(data.total)
-            const secondOptionVotes = total - score
-
+            const voteMembers = event?.voteMembers.length + 1
+            const firstOptionVotes = Number(data.score)
+            const total_votes = Number(data.total)
+            const secondOptionVotes = total_votes - firstOptionVotes
+            const NoVotes = voteMembers - total_votes
             const transformedResults: VoteResults[] = [
                 {
                     option: event?.voteOptions?.[0] || "Option 1",
-                    votes: score,
-                    percentage: total > 0 ? Math.round((score / total) * 100) : 0,
+                    votes: firstOptionVotes,
+                    percentage: Math.round((firstOptionVotes / voteMembers) * 100),
                     color: CHART_COLORS[0],
                 },
                 {
                     option: event?.voteOptions?.[1] || "Option 2",
                     votes: secondOptionVotes,
-                    percentage: total > 0 ? Math.round((secondOptionVotes / total) * 100) : 0,
+                    percentage: Math.round((secondOptionVotes / voteMembers) * 100),
                     color: CHART_COLORS[1],
+                },
+                {
+                    option: "No votes",
+                    votes: NoVotes,
+                    percentage:  Math.round(((voteMembers - total_votes) / voteMembers) * 100),
+                    color: CHART_COLORS[2],
                 },
             ]
 
@@ -275,7 +277,6 @@ export default function EventDetailPage() {
                 credentials: "include",
             })
 
-            console.log(await response.json())
 
             if (!response.ok) {
                 const errorData = await response.json()
@@ -321,6 +322,11 @@ export default function EventDetailPage() {
     }
 
     async function handleVote(option: number) {
+
+        const { default: generateBallotProof } = await import("@/lib/zkproof/circom/ballot/generate_proof.mjs")
+        const { default: generateMerkleProof } = await import("@/lib/zkproof/circom/merkletree/generator.mjs")
+        const { default: generateNullifier } = await import("@/lib/zkproof/circom/nullifier/generateNullifier.mjs")
+
         try {
             let response = await fetch(`http://localhost:8000/event/${event?.id}/membership/merkle`, {
                 method: "GET",
@@ -336,40 +342,11 @@ export default function EventDetailPage() {
             }
 
             const jsonBody = await response.json()
-            console.log(jsonBody)
 
             const membershipPath: string[] = []
             jsonBody.data.proof.Siblings.forEach((sibling: string) => membershipPath.push((atob(sibling))))
             const paths = merklePathToBits(jsonBody.data.proof.Path, jsonBody.data.proof.Siblings.length)
-            console.log(paths)
-            console.log(uuidToBigInt(event?.id as string))
-            console.log("root : ", atob(jsonBody.data.root).toString())
-
-            const argv: string[] = [
-                "--Yx=1527465159374431915328497116935179161014331322368960485951268517950184093102",
-                "--Yy=17274044707157828649723710289902216429715848248207037129568326237800068062774",
-                `--user_secret_key=${localStorage.getItem("privateKey")}`,
-                `--event_id=${uuidToBigInt(event?.id as string)}`,
-                `--membership_merkle_path=${toCommaSeparated(membershipPath)}`,
-                `--membership_path_positions=${paths}`,
-                `--membership_merkle_root=${atob(jsonBody.data.root)}`,
-                `--msg=${option}`,
-                "--Gx=1",
-                "--Gy=2",
-            ]
-
-            console.log(argv)
-
-            // const merkle = await runWasm("runMerkle", argv)
-            // const nullifier = await runWasm("runNullifier", argv)
             const m = await generateBallotProof(option)
-            console.log( {
-                "MerkleRoot": `${atob(jsonBody.data.root)}`,
-                "LeafValue": getCommitment(),
-                "MerklePath": membershipPath,
-                "PathPositions": paths,
-                "SecretKey": `${localStorage.getItem("privateKey")}`
-            },)
             const m2 = await generateMerkleProof(
                 {
                     "MerkleRoot": `${atob(jsonBody.data.root)}`,
@@ -379,36 +356,20 @@ export default function EventDetailPage() {
                     "SecretKey": `${localStorage.getItem("privateKey")}`
                 },
             )
-            console.log("generated : ", m2)
-
             const nullifier = await MimC7Hash([BigInt(localStorage.getItem("privateKey")), uuidToBigInt(event?.id as string)])
-            console.log("nullifier : ", nullifier)
-            console.log({
-                "Commitment": getCommitment(),
-                "EventID": `${uuidToBigInt(event?.id as string)}`,
-                "Nullifier": nullifier,
-                "SecretKey": `${localStorage.getItem("privateKey")}`
-            })
+
             const m3 = await generateNullifier({
                 "Commitment": getCommitment(),
                 "EventID": `${uuidToBigInt(event?.id as string)}`,
                 "Nullifier": nullifier,
                 "SecretKey": `${localStorage.getItem("privateKey")}`
             })
-            console.log("m3 : ", m3)
-
-
-
+            console.log(m, m2, m3)
             const proof = {
                 ballot: m,
                 membership: m2,
                 nullifier: m3
             }
-
-            console.log(JSON.stringify({
-                "EventID": event?.id,
-                "Proofs": proof
-            }))
 
             response = await fetch(`http://localhost:8000/event/${event?.id}/vote`, {
                 method: "POST",
@@ -421,8 +382,15 @@ export default function EventDetailPage() {
                 }),
                 credentials: "include",
             })
+            if (response.status === 208) {
+                setErrorMessage("You already submitted a vote for this event.")
+                toast({
+                    title: "Vote already submitted",
+                    variant: "destructive",
+                })
+                return
+            }
 
-            console.log(response.json())
         } catch (error) {
             const message = error instanceof Error ? error.message : "An error occurred"
             setErrorMessage(message)
@@ -595,11 +563,6 @@ export default function EventDetailPage() {
                 <LoadingSpinner size="lg" text="Loading event…" />
             </div>
         )
-    }
-
-    if (!event || !user) {
-        router.push("/dashboard")
-        return
     }
 
     const isOwner = event?.admin === user?.commitment
@@ -938,7 +901,7 @@ export default function EventDetailPage() {
                             <div className="rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border border-blue-200 dark:border-blue-800 p-6">
                                 <p className="text-sm font-medium text-muted-foreground mb-2">Total Votes</p>
                                 <p className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                                    {voteResults.reduce((sum, r) => sum + r.votes, 0)}
+                                    {voteResults.slice(0, -1).reduce((sum, r) => sum + r.votes, 0)}
                                 </p>
                             </div>
 
@@ -1001,8 +964,11 @@ export default function EventDetailPage() {
                                                 <span className="text-base font-semibold text-foreground">{result.option}</span>
                                             </div>
                                             <div className="flex items-center gap-4">
-                                                <span className="text-sm text-muted-foreground">{result.votes} votes</span>
-                                                <span className="text-lg font-bold text-foreground min-w-[4rem] text-right">
+                                                <span className="text-sm text-muted-foreground">
+                                                  {result.votes} {index != 2 ? "Voted" : "Didn't vote"}
+                                                </span>
+                                                <span
+                                                    className="text-lg font-bold text-foreground min-w-[4rem] text-right">
                           {result.percentage}%
                         </span>
                                             </div>

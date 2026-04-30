@@ -43,6 +43,9 @@ func NewMongoClient() *MongoClient {
 	opts := options.Client().ApplyURI(fmt.Sprintf(
 		"mongodb://%s:%s@%s", *username, *password, *host),
 	).SetServerAPIOptions(serverAPI)
+	fmt.Println(fmt.Sprintf(
+		"mongodb://%s:%s@%s", *username, *password, *host),
+	)
 	return NewMongoClientWithConfig(opts)
 }
 

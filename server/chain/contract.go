@@ -62,7 +62,7 @@ type NullifierProof struct {
 
 var (
 	// ChainID, unique for each ethereum network, default set to sepolia network.
-	chainID           = flag.String("eth_based_network_chain_id", "11155111", "Chain Commitment")
+	chainID           = flag.String("network_chain_id", "11155111", "Chain Commitment")
 	ElgamalPrivateKey = flag.String("elgamal_private_key", "20", "elgamal encryption private key")
 )
 
@@ -83,8 +83,6 @@ type VolteSessionHandler interface {
 }
 
 type ContractHandler interface {
-	GetClient() *ethclient.Client
-	GetFromAddress() common.Address
 	GetVolteContract() VolteSessionHandler
 	GetTallyScore(eventID string) (*TallyScore, error)
 }
@@ -94,37 +92,60 @@ type TallyScore struct {
 	Total uint64
 }
 
+type ConnectionHandler struct {
+	Client          *ethclient.Client // Ethereum Client for RPC communication.
+	FromAddress     common.Address    // Server wallet address.
+	TransactionOpts *bind.TransactOpts
+}
+
 type EthereumContractHandler struct {
-	client      *ethclient.Client // Ethereum client for RPC communication.
-	fromAddress common.Address    // Server wallet address.
 	// List of contracts.
 	volteContract   VolteSessionHandler
 	tallyPrivateKey *big.Int
 }
 
-func NewEthereumChainHandler() *EthereumContractHandler {
+func NewConnectionHandler() *ConnectionHandler {
+	slog.Info(*chainRpcNodeUrl)
 	client, err := ethclient.Dial(*chainRpcNodeUrl)
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to Dial chain rpc node. err : %s", err))
 		panic(err)
 	}
 	// Load private key.
+
 	privateKey, err := crypto.HexToECDSA(*walletPrivateKey)
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to load private key. err : %s", err))
 		panic(err)
 	}
-	ethChainID, err := strconv.ParseInt(*chainID, 10, 64)
+	chainId, err := client.ChainID(context.Background())
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to get chain id. err : %s", err))
+		panic(err)
+	}
+	ethChainID, err := strconv.ParseInt(chainId.String(), 10, 64)
+	slog.Info(fmt.Sprintf("connected on chain ID : %s", *chainID))
 	if err != nil {
 		panic(err)
 	}
 	fromAddress := crypto.PubkeyToAddress(privateKey.PublicKey)
 	transactionOpsAuth, err := bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(ethChainID))
+	transactionOpsAuth.GasLimit = 1000000
 	if err != nil {
 		slog.Error("Something went wrong while creating auth transaction sign.")
 		panic(err)
 	}
-	volteContract, err := contracts.NewVolte(common.HexToAddress(*contractAddress), client)
+	return &ConnectionHandler{
+		Client:          client,
+		FromAddress:     fromAddress,
+		TransactionOpts: transactionOpsAuth,
+	}
+}
+
+func NewEthereumChainHandler() *EthereumContractHandler {
+	connectionHandler := NewConnectionHandler()
+	volteContract, err := contracts.NewVolte(common.HexToAddress(*contractAddress), connectionHandler.Client)
+
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to create contract. err : %s", err))
 		panic(err)
@@ -137,16 +158,14 @@ func NewEthereumChainHandler() *EthereumContractHandler {
 	}
 
 	return &EthereumContractHandler{
-		client:      client,
-		fromAddress: fromAddress,
 		volteContract: &contracts.VolteSession{
 			Contract: volteContract,
 			CallOpts: bind.CallOpts{
-				From:    fromAddress,
-				Pending: true,
+				From:    connectionHandler.FromAddress,
+				Pending: false,
 				Context: context.Background(),
 			},
-			TransactOpts: *transactionOpsAuth,
+			TransactOpts: *connectionHandler.TransactionOpts,
 		},
 		tallyPrivateKey: tallyPrivateKey,
 	}
@@ -154,14 +173,6 @@ func NewEthereumChainHandler() *EthereumContractHandler {
 
 func (e *EthereumContractHandler) GetVolteContract() VolteSessionHandler {
 	return e.volteContract
-}
-
-func (e *EthereumContractHandler) GetClient() *ethclient.Client {
-	return e.client
-}
-
-func (e *EthereumContractHandler) GetFromAddress() common.Address {
-	return e.fromAddress
 }
 
 func (e *EthereumContractHandler) VerifyAndSubmitVote(ballotProof *BallotProof,
@@ -184,12 +195,7 @@ func (e *EthereumContractHandler) GetTallyScore(eventID string) (*TallyScore, er
 
 	// Contract returns BabyJubJub points (C1, C2) as 4 field elements.
 	// scores[0]=C1.x, scores[1]=C1.y, scores[2]=C2.x, scores[3]=C2.y
-	slog.Info(
-		scores[0].String(),
-		scores[1].String(),
-		scores[2].String(),
-		scores[3].String(),
-	)
+
 	C1 := babyjub.NewPoint()
 	C2 := babyjub.NewPoint()
 	C1.X = NewIntFromString(scores[0].String())
