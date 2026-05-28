@@ -1,6 +1,7 @@
 .idea
 .env
-*.env
+*/*.env
+*/.env
 *.bin
 *.abi
 *keys
