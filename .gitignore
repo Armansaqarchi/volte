@@ -1,5 +1,6 @@
 .idea
-*/.env
+.env
+*.env
 *.bin
 *.abi
 *keys
@@ -10,3 +11,4 @@ client/.next
 *.wasm
 circom/*/build
 /contracts/chain/data
+tau
