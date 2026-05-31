@@ -1,1 +1,1 @@
-/app/server start $(cat /data/.env | tr '\n' ' ')
+go run main.go start $(cat /data/.env | tr '\n' ' ')

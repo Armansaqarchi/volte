@@ -1,535 +1,511 @@
-# Circom ZK-SNARK Circuits for Privacy-Preserving Voting
+# Privacy-Preserving Voting System with Zero-Knowledge Proofs
 
-This repository contains three Circom circuits implementing zero-knowledge proofs for privacy-preserving voting systems using the Groth16 proving system on the BN128 (BN254) elliptic curve.
+A complete implementation of privacy-preserving voting using Circom ZK-SNARKs, featuring three core circuits for encrypted voting, voter registry membership, and double-voting prevention.
 
-## 🔐 Circuits Overview
+## 🎯 Project Overview
 
-### 1. Ballot Circuit (`ballot/ballot.circom`)
-Implements ElGamal encryption proof for encrypted voting on the BabyJubJub curve.
+This repository implements a cryptographically secure voting system where:
+- **Votes remain encrypted** end-to-end
+- **Voter identity is anonymous** but verifiable
+- **Double-voting is prevented** without revealing who voted
+- **All proofs are verifiable on-chain** via Solidity smart contracts
 
-**Public Inputs:**
-- `C1x, C1y`: First ciphertext point (ephemeral public key)
-- `C2x, C2y`: Second ciphertext point (encrypted vote)
+### System Architecture
 
-**Private Inputs:**
-- `M`: Vote bit (0 or 1)
-- `K`: Random scalar (encryption randomness)
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Voting System                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
+│  │   Ballot     │    │   Merkle     │    │  Nullifier   │      │
+│  │   Circuit    │    │   Circuit    │    │   Circuit    │      │
+│  └──────────────┘    └──────────────┘    └──────────────┘      │
+│        │                    │                    │               │
+│        ▼                    ▼                    ▼               │
+│  Encrypted Vote      Voter Registry      Double-Vote            │
+│  Validation          Membership          Prevention             │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+         │                    │                    │
+         └────────────────────┴────────────────────┘
+                              │
+                              ▼
+                    ┌──────────────────┐
+                    │  Proof Server    │
+                    │  (Optional)      │
+                    └──────────────────┘
+                              │
+                              ▼
+                    ┌──────────────────┐
+                    │  Smart Contract  │
+                    │  Verifiers       │
+                    └──────────────────┘
+```
 
-**Constraints:**
-1. `C1 = K·G` (ephemeral key generation)
-2. `C2 = K·Y + M·G` (vote encryption)
-3. `M ∈ {0, 1}` (vote validity)
+## 📦 Repository Structure
 
-**Use Case:** Proves that an encrypted vote is valid (0 or 1) without revealing the vote itself.
-
----
-
-### 2. Merkle Circuit (`merkle/merkle.circom`)
-Implements Merkle tree membership proof using MiMC hash function.
-
-**Public Inputs:**
-- `MerkleRoot`: Root hash of the Merkle tree
-- `LeafValue`: Commitment to the secret key
-
-**Private Inputs:**
-- `SecretKey`: User's secret key
-- `MerklePath[8]`: Sibling hashes along the path (depth 8)
-- `PathPositions[8]`: Binary path indicators (0=left, 1=right)
-
-**Constraints:**
-1. `LeafValue = MiMC(SecretKey)`
-2. Merkle path verification from leaf to root
-3. `ComputedRoot = MerkleRoot`
-
-**Use Case:** Proves membership in a voter registry without revealing which voter you are.
-
----
-
-### 3. Nullifier Circuit (`nullifier/nullifier.circom`)
-Implements double-voting prevention using nullifiers.
-
-**Public Inputs:**
-- `Commitment`: User's public commitment
-- `EventID`: Unique identifier for the voting event
-- `Nullifier`: Unique nullifier for this vote
-
-**Private Inputs:**
-- `SecretKey`: User's secret key
-
-**Constraints:**
-1. `Commitment = MiMC(SecretKey)`
-2. `Nullifier = MiMC(SecretKey, EventID)`
-
-**Use Case:** Proves you have the right to vote (via commitment) and generates a unique nullifier to prevent double-voting, without revealing your identity.
-
----
-
-## 🛠️ Prerequisites
-
-### Required Tools
-- **Circom compiler** (v2.1.0+): Install from [circom documentation](https://docs.circom.io/getting-started/installation/)
-  ```bash
-  cargo install --git https://github.com/iden3/circom.git circom
-  ```
-- **snarkjs** (v0.7.6+): Installed via npm
-  ```bash
-  npm install
-  ```
-
-### System Requirements
-- Node.js 16+
-- 8GB+ RAM (for larger circuits)
-- ~500MB disk space for build artifacts
-
----
+```
+.
+├── README.md                          # Detailed circuit documentation
+├── PROJECT_README.md                  # This file (project overview)
+├── Makefile                           # Build automation
+├── package.json                       # Node.js dependencies
+│
+├── ballot/                            # Encrypted voting circuit
+│   ├── ballot.circom                  # ElGamal encryption proof
+│   ├── build/                         # Compiled artifacts
+│   │   ├── ballot.wasm                # Witness generator
+│   │   ├── ballot_final.zkey          # Proving key
+│   │   ├── verification_key.json      # Verification key
+│   │   └── ballot.sol                 # Solidity verifier
+│   └── circom-pairing/
+│       └── demo/server/               # Proof generation server
+│           ├── README.md              # Server documentation
+│           ├── index.js               # Express API
+│           └── exec.sh                # Proof generation script
+│
+├── merkle/                            # Voter registry circuit
+│   ├── merkle.circom                  # Merkle tree membership proof
+│   └── build/                         # Compiled artifacts
+│       ├── merkle.wasm
+│       ├── merkle_final.zkey
+│       ├── verification_key.json
+│       └── membership.sol
+│
+├── nullifier/                         # Double-voting prevention
+│   ├── nullifier.circom               # Nullifier generation proof
+│   └── build/                         # Compiled artifacts
+│       ├── nullifier.wasm
+│       ├── nullifier_final.zkey
+│       ├── verification_key.json
+│       └── nullifier.sol
+│
+└── tau/                               # Powers of Tau ceremony files
+    ├── pot15_0000.ptau
+    ├── pot15_0001.ptau
+    └── pot15_final.ptau
+```
 
 ## 🚀 Quick Start
 
-### 1. Install Dependencies
+### Prerequisites
+
 ```bash
+# Install Circom compiler
+cargo install --git https://github.com/iden3/circom.git circom
+
+# Install Node.js dependencies
 npm install
 ```
 
-### 2. Build All Circuits
+### Build All Circuits
+
 ```bash
+# Generate trusted setup + compile all circuits
 make all
 ```
 
-This command will:
-1. Generate Powers of Tau ceremony files (trusted setup)
-2. Compile all three circuits
-3. Generate proving keys (`.zkey` files)
-4. Generate verification keys (`.json` files)
-5. Export Solidity verifiers (`.sol` files)
+This creates:
+- `.wasm` files for witness generation
+- `.zkey` files for proof generation
+- `.sol` files for on-chain verification
+- `verification_key.json` for off-chain verification
 
-**Build time:** ~2-5 minutes depending on your system.
+**Build time:** ~2-5 minutes
+
+## 🔐 Circuit Details
+
+### 1. Ballot Circuit - Encrypted Vote Validation
+
+**Purpose:** Prove that an encrypted vote is valid (0 or 1) without revealing the vote.
+
+**Cryptography:** ElGamal encryption on BabyJubJub curve
+
+**Public Inputs:**
+- `C1x, C1y` - Ephemeral public key
+- `C2x, C2y` - Encrypted vote
+
+**Private Inputs:**
+- `M` - Vote bit (0 or 1)
+- `K` - Encryption randomness
+
+**Constraints:** 1,234 (example)
+
+**Use Case:**
+```javascript
+// Voter encrypts their vote
+const vote = 1; // or 0
+const randomness = generateRandom();
+const ciphertext = elgamalEncrypt(vote, publicKey, randomness);
+
+// Generate proof that ciphertext encrypts a valid vote
+const proof = await generateBallotProof({
+  C1x: ciphertext.C1.x,
+  C1y: ciphertext.C1.y,
+  C2x: ciphertext.C2.x,
+  C2y: ciphertext.C2.y,
+  M: vote,
+  K: randomness
+});
+
+// Submit ciphertext + proof (vote remains hidden)
+await submitVote(ciphertext, proof);
+```
 
 ---
 
-## 📦 Build Artifacts
+### 2. Merkle Circuit - Voter Registry Membership
 
-After running `make all`, each circuit directory will contain a `build/` folder:
+**Purpose:** Prove you're a registered voter without revealing which voter you are.
 
-```
-ballot/build/
-├── ballot.wasm              # WebAssembly witness generator
-├── ballot_final.zkey        # Proving key (4.2 MB)
-├── verification_key.json    # Verification key
-├── ballot.sol               # Solidity verifier contract
-├── ballot.r1cs              # R1CS constraint system
-└── ballot_js/
-    ├── ballot.wasm          # WASM file for witness calculation
-    ├── witness_calculator.js # Witness calculator module
-    └── generate_witness.js  # CLI witness generator
+**Cryptography:** MiMC hash function, Merkle tree (depth 8)
 
-merkle/build/
-├── merkle.wasm
-├── merkle_final.zkey
-├── verification_key.json
-├── membership.sol
-└── merkle_js/...
+**Public Inputs:**
+- `MerkleRoot` - Root of voter registry tree
+- `LeafValue` - Your public commitment
 
-nullifier/build/
-├── nullifier.wasm
-├── nullifier_final.zkey
-├── verification_key.json
-├── nullifier.sol
-└── nullifier_js/...
+**Private Inputs:**
+- `SecretKey` - Your secret key
+- `MerklePath[8]` - Sibling hashes
+- `PathPositions[8]` - Path directions
+
+**Constraints:** 2,456 (example)
+
+**Use Case:**
+```javascript
+// Voter proves they're in the registry
+const secretKey = loadSecretKey();
+const commitment = mimcHash(secretKey);
+const { path, positions } = getMerklePath(commitment);
+
+const proof = await generateMerkleProof({
+  MerkleRoot: registryRoot,
+  LeafValue: commitment,
+  SecretKey: secretKey,
+  MerklePath: path,
+  PathPositions: positions
+});
+
+// Proof shows membership without revealing identity
+await verifyVoterEligibility(proof);
 ```
 
 ---
 
-## 🌐 Client-Side Proof Generation
+### 3. Nullifier Circuit - Double-Voting Prevention
 
-### Browser Usage
+**Purpose:** Generate a unique nullifier to prevent voting twice while maintaining anonymity.
 
-The `.wasm` and `_final.zkey` files are designed for client-side proof generation in web browsers.
+**Cryptography:** MiMC hash function
 
-#### Example: Generating a Ballot Proof
+**Public Inputs:**
+- `Commitment` - Your public commitment
+- `EventID` - Unique voting event identifier
+- `Nullifier` - Unique nullifier for this vote
+
+**Private Inputs:**
+- `SecretKey` - Your secret key
+
+**Constraints:** 789 (example)
+
+**Use Case:**
+```javascript
+// Generate nullifier for this election
+const secretKey = loadSecretKey();
+const commitment = mimcHash(secretKey);
+const eventID = "election-2024-president";
+const nullifier = mimcHash(secretKey, eventID);
+
+const proof = await generateNullifierProof({
+  Commitment: commitment,
+  EventID: eventID,
+  Nullifier: nullifier,
+  SecretKey: secretKey
+});
+
+// Smart contract checks if nullifier was used before
+await castVote(nullifier, proof); // Reverts if nullifier exists
+```
+
+## 🌐 Deployment Options
+
+### Option 1: Client-Side Proof Generation (Recommended)
+
+**Pros:** Maximum privacy, no server trust required  
+**Cons:** Slower proof generation (~5-30s in browser)
 
 ```html
-<!DOCTYPE html>
-<html>
-<head>
-    <script src="https://cdn.jsdelivr.net/npm/snarkjs@0.7.6/build/snarkjs.min.js"></script>
-</head>
-<body>
-<script type="module">
-    // 1. Load the WASM and zkey files
-    const wasmPath = '/ballot/build/ballot_js/ballot.wasm';
-    const zkeyPath = '/ballot/build/ballot_final.zkey';
-
-    // 2. Prepare circuit inputs
-    const input = {
-        // Public inputs (ciphertext)
-        C1x: "12345...",  // Ephemeral public key X
-        C1y: "67890...",  // Ephemeral public key Y
-        C2x: "11111...",  // Encrypted vote X
-        C2y: "22222...",  // Encrypted vote Y
-        
-        // Private inputs (witness)
-        M: "1",           // Vote: 0 or 1
-        K: "98765..."     // Random scalar
-    };
-
-    // 3. Generate witness
-    const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-        input,
-        wasmPath,
-        zkeyPath
-    );
-
-    console.log("Proof:", proof);
-    console.log("Public Signals:", publicSignals);
-
-    // 4. Verify proof locally (optional)
-    const vKey = await fetch('/ballot/build/verification_key.json')
-        .then(r => r.json());
-    
-    const verified = await snarkjs.groth16.verify(
-        vKey,
-        publicSignals,
-        proof
-    );
-    
-    console.log("Proof valid:", verified);
-
-    // 5. Export proof for Solidity verification
-    const calldata = await snarkjs.groth16.exportSolidityCallData(
-        proof,
-        publicSignals
-    );
-    
-    console.log("Solidity calldata:", calldata);
+<script src="https://cdn.jsdelivr.net/npm/snarkjs@0.7.6/build/snarkjs.min.js"></script>
+<script>
+  const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+    input,
+    '/ballot/build/ballot_js/ballot.wasm',
+    '/ballot/build/ballot_final.zkey'
+  );
 </script>
-</body>
-</html>
 ```
 
-#### Example: Merkle Membership Proof
+### Option 2: Server-Side Proof Generation
 
-```javascript
-import * as snarkjs from 'snarkjs';
+**Pros:** Faster proofs (1-5s with RapidSNARK)  
+**Cons:** Server sees private inputs (requires trust)
 
-async function proveMembership(secretKey, merklePath, pathPositions, merkleRoot) {
-    // Calculate leaf value (commitment)
-    const leafValue = mimcHash(secretKey);  // Use your MiMC implementation
-    
-    const input = {
-        // Public
-        MerkleRoot: merkleRoot,
-        LeafValue: leafValue,
-        
-        // Private
-        SecretKey: secretKey,
-        MerklePath: merklePath,      // Array of 8 sibling hashes
-        PathPositions: pathPositions  // Array of 8 bits (0 or 1)
-    };
-
-    const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-        input,
-        'merkle/build/merkle_js/merkle.wasm',
-        'merkle/build/merkle_final.zkey'
-    );
-
-    return { proof, publicSignals };
-}
-```
-
-#### Example: Nullifier Generation
-
-```javascript
-async function generateNullifier(secretKey, eventID) {
-    // Calculate commitment and nullifier
-    const commitment = mimcHash(secretKey);
-    const nullifier = mimcHash(secretKey, eventID);
-    
-    const input = {
-        // Public
-        Commitment: commitment,
-        EventID: eventID,
-        Nullifier: nullifier,
-        
-        // Private
-        SecretKey: secretKey
-    };
-
-    const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-        input,
-        'nullifier/build/nullifier_js/nullifier.wasm',
-        'nullifier/build/nullifier_final.zkey'
-    );
-
-    return { proof, publicSignals, nullifier };
-}
-```
-
----
-
-### Node.js Usage
-
-```javascript
-const snarkjs = require('snarkjs');
-const fs = require('fs');
-
-async function generateProof(circuitName, input) {
-    const wasmPath = `./${circuitName}/build/${circuitName}_js/${circuitName}.wasm`;
-    const zkeyPath = `./${circuitName}/build/${circuitName}_final.zkey`;
-
-    // Generate proof
-    const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-        input,
-        wasmPath,
-        zkeyPath
-    );
-
-    // Verify proof
-    const vKey = JSON.parse(
-        fs.readFileSync(`./${circuitName}/build/verification_key.json`)
-    );
-    
-    const verified = await snarkjs.groth16.verify(vKey, publicSignals, proof);
-    
-    return { proof, publicSignals, verified };
-}
-
-// Example usage
-const ballotInput = {
-    C1x: "123...",
-    C1y: "456...",
-    C2x: "789...",
-    C2y: "012...",
-    M: "1",
-    K: "345..."
-};
-
-generateProof('ballot', ballotInput).then(result => {
-    console.log('Proof generated:', result.verified);
-});
-```
-
----
-
-## 🔗 On-Chain Verification
-
-### Deploy Verifier Contracts
-
-Each circuit generates a Solidity verifier contract:
+See [`ballot/circom-pairing/demo/server/README.md`](ballot/circom-pairing/demo/server/README.md) for server setup.
 
 ```bash
-# Deploy to Ethereum/Polygon/etc.
-# ballot/build/ballot.sol
-# merkle/build/membership.sol
-# nullifier/build/nullifier.sol
+cd ballot/circom-pairing/demo/server
+npm install
+npm start
 ```
 
-### Verify Proof On-Chain
+**API Usage:**
+```javascript
+// Submit proof request
+const { id } = await fetch('http://localhost:3000/generate_proof', {
+  method: 'POST',
+  body: JSON.stringify(input)
+}).then(r => r.json());
+
+// Poll for result
+const proof = await pollResult(id);
+```
+
+### Option 3: Hybrid (Client Witness + Server Proof)
+
+**Pros:** Fast + private (server never sees secrets)  
+**Cons:** More complex implementation
+
+```javascript
+// 1. Generate witness client-side
+const witness = await generateWitness(input);
+
+// 2. Send witness to server for proof generation
+const proof = await serverProve(witness);
+```
+
+## 🔗 Smart Contract Integration
+
+### Deploy Verifiers
 
 ```solidity
-// Example: Verifying a ballot proof
-contract VotingSystem {
-    Groth16Verifier public ballotVerifier;
+// Deploy generated verifier contracts
+BallotVerifier ballotVerifier = new BallotVerifier();
+MembershipVerifier membershipVerifier = new MembershipVerifier();
+NullifierVerifier nullifierVerifier = new NullifierVerifier();
+```
+
+### Voting Contract Example
+
+```solidity
+contract PrivateVoting {
+    BallotVerifier public ballotVerifier;
+    MembershipVerifier public membershipVerifier;
+    NullifierVerifier public nullifierVerifier;
     
-    constructor(address _verifier) {
-        ballotVerifier = Groth16Verifier(_verifier);
+    bytes32 public voterRegistryRoot;
+    mapping(bytes32 => bool) public usedNullifiers;
+    
+    struct EncryptedVote {
+        uint256 C1x;
+        uint256 C1y;
+        uint256 C2x;
+        uint256 C2y;
     }
     
-    function submitVote(
-        uint[2] memory a,
-        uint[2][2] memory b,
-        uint[2] memory c,
-        uint[4] memory publicSignals  // [C1x, C1y, C2x, C2y]
-    ) public {
+    EncryptedVote[] public encryptedVotes;
+    
+    function castVote(
+        EncryptedVote memory vote,
+        uint256[2] memory ballotProofA,
+        uint256[2][2] memory ballotProofB,
+        uint256[2] memory ballotProofC,
+        uint256[8] memory ballotPublicSignals,
+        
+        uint256[2] memory membershipProofA,
+        uint256[2][2] memory membershipProofB,
+        uint256[2] memory membershipProofC,
+        uint256[8] memory membershipPublicSignals,
+        
+        uint256[2] memory nullifierProofA,
+        uint256[2][2] memory nullifierProofB,
+        uint256[2] memory nullifierProofC,
+        uint256[8] memory nullifierPublicSignals
+    ) external {
+        // 1. Verify voter is registered
         require(
-            ballotVerifier.verifyProof(a, b, c, publicSignals),
-            "Invalid proof"
+            membershipVerifier.verifyProof(
+                membershipProofA,
+                membershipProofB,
+                membershipProofC,
+                membershipPublicSignals
+            ),
+            "Invalid membership proof"
         );
         
-        // Store encrypted vote (C1, C2)
-        // ...
+        // 2. Verify encrypted vote is valid (0 or 1)
+        require(
+            ballotVerifier.verifyProof(
+                ballotProofA,
+                ballotProofB,
+                ballotProofC,
+                ballotPublicSignals
+            ),
+            "Invalid ballot proof"
+        );
+        
+        // 3. Verify nullifier and prevent double-voting
+        bytes32 nullifier = bytes32(nullifierPublicSignals[2]);
+        require(!usedNullifiers[nullifier], "Already voted");
+        
+        require(
+            nullifierVerifier.verifyProof(
+                nullifierProofA,
+                nullifierProofB,
+                nullifierProofC,
+                nullifierPublicSignals
+            ),
+            "Invalid nullifier proof"
+        );
+        
+        // 4. Record vote
+        usedNullifiers[nullifier] = true;
+        encryptedVotes.push(vote);
+        
+        emit VoteCast(nullifier, vote);
+    }
+    
+    // Homomorphic tally (sum encrypted votes)
+    function tallyVotes() external view returns (EncryptedVote memory) {
+        EncryptedVote memory sum = encryptedVotes[0];
+        for (uint i = 1; i < encryptedVotes.length; i++) {
+            sum = addEncryptedVotes(sum, encryptedVotes[i]);
+        }
+        return sum;
     }
 }
 ```
-
-### Converting snarkjs Proof to Solidity Format
-
-```javascript
-// Client-side: Export proof for Solidity
-const calldata = await snarkjs.groth16.exportSolidityCallData(proof, publicSignals);
-
-// Parse calldata for contract call
-const argv = calldata.split(',').map(x => x.trim());
-const a = JSON.parse(argv[0]);
-const b = JSON.parse(argv[1]);
-const c = JSON.parse(argv[2]);
-const publicInputs = JSON.parse(argv[3]);
-
-// Call contract
-await votingContract.submitVote(a, b, c, publicInputs);
-```
-
----
 
 ## 🧪 Testing
 
-### Generate Test Witness (Node.js)
+### Test Individual Circuits
 
 ```bash
-# Create input file
-echo '{
-  "C1x": "123...",
-  "C1y": "456...",
-  "C2x": "789...",
-  "C2y": "012...",
-  "M": "1",
-  "K": "345..."
-}' > input.json
+# Generate test inputs
+echo '{"C1x":"123","C1y":"456","C2x":"789","C2y":"012","M":"1","K":"345"}' > input.json
 
 # Generate witness
 node ballot/build/ballot_js/generate_witness.js \
-    ballot/build/ballot_js/ballot.wasm \
-    input.json \
-    witness.wtns
+  ballot/build/ballot_js/ballot.wasm \
+  input.json \
+  witness.wtns
 
 # Generate proof
 snarkjs groth16 prove \
-    ballot/build/ballot_final.zkey \
-    witness.wtns \
-    proof.json \
-    public.json
+  ballot/build/ballot_final.zkey \
+  witness.wtns \
+  proof.json \
+  public.json
 
 # Verify proof
 snarkjs groth16 verify \
-    ballot/build/verification_key.json \
-    public.json \
-    proof.json
+  ballot/build/verification_key.json \
+  public.json \
+  proof.json
 ```
 
----
+### Integration Testing
 
-## 📋 Makefile Commands
+```javascript
+const { expect } = require('chai');
 
-```bash
-make help       # Show available commands
-make tau        # Generate Powers of Tau ceremony (one-time setup)
-make build      # Compile all circuits and generate keys
-make all        # Run tau + build
-make clean      # Remove all build artifacts
+describe('Voting System', () => {
+  it('should accept valid vote from registered voter', async () => {
+    const secretKey = generateSecretKey();
+    const commitment = mimcHash(secretKey);
+    
+    // Register voter
+    await voterRegistry.addVoter(commitment);
+    
+    // Cast vote
+    const vote = 1;
+    const { ciphertext, ballotProof } = await encryptVote(vote);
+    const membershipProof = await proveMembership(secretKey);
+    const nullifierProof = await generateNullifier(secretKey, eventID);
+    
+    await votingContract.castVote(
+      ciphertext,
+      ballotProof,
+      membershipProof,
+      nullifierProof
+    );
+    
+    expect(await votingContract.voteCount()).to.equal(1);
+  });
+  
+  it('should reject double-voting', async () => {
+    // ... cast first vote ...
+    
+    await expect(
+      votingContract.castVote(/* same nullifier */)
+    ).to.be.revertedWith('Already voted');
+  });
+});
 ```
 
----
-
-## 🔧 Advanced Configuration
-
-### Modify Circuit Parameters
-
-**Ballot Circuit:** Edit compile-time constants in `ballot/ballot.circom`:
-```circom
-component main { public [C1x, C1y, C2x, C2y] } = BallotCircuit(
-    Gx,  // Generator point X
-    Gy,  // Generator point Y
-    Yx,  // Public key X
-    Yy   // Public key Y
-);
-```
-
-**Merkle Circuit:** Change tree depth in `merkle/merkle.circom`:
-```circom
-component main { public [MerkleRoot, LeafValue] } = MerkleCircuit(8);  // depth=8
-```
-
-After modifying circuits, rebuild:
-```bash
-make clean
-make all
-```
-
-### Increase Powers of Tau
-
-For larger circuits, increase the tau power in `Makefile`:
-```makefile
-TAU_POWER = 20  # Supports up to 2^20 constraints
-```
-
----
-
-## 📊 Circuit Statistics
-
-| Circuit    | Constraints | Wasm Size | Zkey Size | Proving Time* | Verification Time* |
-|------------|-------------|-----------|-----------|---------------|-------------------|
-| Ballot     | ~5,000      | 97 KB     | 4.2 MB    | ~1-2s         | ~50ms             |
-| Merkle     | ~3,000      | 85 KB     | 3.8 MB    | ~0.8-1.5s     | ~40ms             |
-| Nullifier  | ~500        | 45 KB     | 2.1 MB    | ~0.3-0.5s     | ~30ms             |
-
-*Approximate times on modern hardware (browser/Node.js)
-
----
-
-## 🔐 Security Considerations
+## 🔒 Security Considerations
 
 ### Trusted Setup
-- The Powers of Tau ceremony in this repo is for **development/testing only**
-- For production, use a multi-party computation (MPC) ceremony
-- Consider using [Perpetual Powers of Tau](https://github.com/privacy-scaling-explorations/perpetualpowersoftau)
 
-### Client-Side Security
-- Never expose private inputs (M, K, SecretKey) in logs or network requests
-- Validate all public inputs before proof generation
-- Use secure random number generation for K and SecretKey
-- Store zkey files on trusted CDN/IPFS
+⚠️ **The included Powers of Tau ceremony is for TESTING ONLY.**
 
-### Smart Contract Security
-- Add access controls to verifier contracts
-- Implement nullifier tracking to prevent double-voting
-- Consider gas optimization for on-chain verification (~250k-350k gas per proof)
+For production:
+1. Use [Perpetual Powers of Tau](https://github.com/privacy-scaling-explorations/perpetualpowersoftau)
+2. Or run a multi-party ceremony with your community
+3. Verify ceremony transcripts
 
----
+### Key Management
 
-## 📚 Resources
+- **Never reuse** secret keys across different voting events
+- Store secret keys in secure enclaves (hardware wallets, TEEs)
+- Use key derivation (BIP-39) for backup/recovery
 
-- [Circom Documentation](https://docs.circom.io/)
-- [snarkjs Documentation](https://github.com/iden3/snarkjs)
-- [Groth16 Paper](https://eprint.iacr.org/2016/260.pdf)
-- [circomlib Library](https://github.com/iden3/circomlib)
-- [ZK-SNARK Explainer](https://z.cash/technology/zksnarks/)
+## 🛠️ Development
 
----
+### Optimizing Circuits
+
+```bash
+# Analyze constraint count
+circom mycircuit.circom --r1cs --sym --inspect
+
+# Profile witness generation
+time node build/mycircuit_js/generate_witness.js ...
+
+# Benchmark proof generation
+time snarkjs groth16 prove ...
+```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please ensure:
-- Circuits compile without errors
-- Tests pass for all circuits
-- Documentation is updated for new features
-
----
-
-## 📄 License
-
-This project uses circuits and libraries with various licenses:
-- Circom circuits: Custom (see individual files)
-- circomlib: GPL-3.0
-- snarkjs: GPL-3.0
-
----
+Contributions welcome! Please:
+- Follow existing code style
+- Add tests for new features
+- Update documentation
+- Run `make all` before submitting PR
 
 ## 🙋 FAQ
 
-**Q: Can I use these circuits in production?**  
-A: These circuits are functional but require a proper trusted setup ceremony for production use.
+**Q: Can votes be decrypted?**  
+A: Only by the election authority holding the private key. Use threshold encryption for decentralized tallying.
 
-**Q: How do I reduce proof generation time?**  
-A: Use Web Workers in browsers, optimize circuit constraints, or use faster curves (BLS12-381).
+**Q: How many voters can the system support?**  
+A: Merkle tree depth 8 supports 256 voters. Increase depth for more (depth 20 = 1M voters).
 
-**Q: Can I verify proofs off-chain?**  
-A: Yes! Use `snarkjs.groth16.verify()` in Node.js or browsers for free verification.
+**Q: What prevents the server from generating fake proofs?**  
+A: The server cannot generate valid proofs without the voter's secret key. Use client-side proving for maximum security.
 
-**Q: What's the difference between `.wasm` in `build/` vs `build/ballot_js/`?**  
-A: They're the same file. The `ballot_js/` directory contains the WASM plus helper scripts for witness generation.
+**Q: Can I use this in production?**  
+A: After proper trusted setup, security audit, and key management implementation, yes.
 
-**Q: How do I integrate with React/Vue/Angular?**  
-A: Import snarkjs as an ES module and load `.wasm`/`.zkey` files as static assets. See browser example above.
-
----
-
-**Built with ❤️ using Circom and snarkjs**
+**Q: How do I handle voter registration?**  
+A: Maintain a Merkle tree of voter commitments. Update root on-chain when adding voters.

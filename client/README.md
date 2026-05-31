@@ -1,159 +1,114 @@
-# ZK Vote - Zero-Knowledge Voting Application
+# Volte Client
 
-A privacy-preserving voting application built with Next.js and designed for Groth16 zero-knowledge proof integration.
+Next.js frontend for Volte, a zero-knowledge voting application. The client handles account onboarding, event management, member administration, vote submission, and result viewing against the Go backend.
 
 ## Features
 
-- **User Authentication**: Sign up and login with email/password
-- **Event Management**: Create voting events with custom options
-- **Private Voting**: Vote using zero-knowledge proofs (Groth16)
-- **Real-time Results**: View voting results while maintaining voter anonymity
+- Account signup and login using a locally generated BN254 private key.
+- MiMC7 commitment generation in the browser.
+- Dashboard for creating and viewing voting events.
+- Event detail pages for adding/removing eligible voters, starting/ending events, voting, and viewing tally results.
+- Browser-side Groth16 proof helper code for ballot, membership, and nullifier circuits.
+- Tailwind CSS and shadcn-style UI components.
 
-## Getting Started
+## Requirements
 
-### Prerequisites
+- Node.js 18+.
+- npm, or pnpm if you prefer the included `pnpm-lock.yaml`.
+- Volte backend running at `http://localhost:8000`.
 
-- Node.js 18+ 
-- Your Groth16 circuit compiled and ready
+## Setup
 
-### Installation
+```bash
+npm install
+npm run dev
+```
 
-1. Clone the repository
-2. Install dependencies: `npm install`
-3. Run the development server: `npm run dev`
-4. Open [http://localhost:3000](http://localhost:3000)
+Open `http://localhost:3000`.
 
-## ZK Proof Integration
+The client currently calls the backend with hard-coded `http://localhost:8000` URLs. Start the backend before using signup, login, event, or voting flows.
 
-This application includes **clear integration points** for your Groth16 zero-knowledge proof system. You need to implement the actual cryptographic operations.
+## Scripts
 
-### Integration Points
+```bash
+npm run dev      # Start the Next.js dev server
+npm run build    # Build for production
+npm run start    # Start a production build
+npm run lint     # Run ESLint
+```
 
-#### 1. **Proof Generation** (`lib/zk-proof.ts`)
-Replace the `generateGroth16Proof()` function with your actual proof generation logic:
+## App Routes
 
-\`\`\`typescript
-export async function generateGroth16Proof(params: ProofGenerationParams): Promise<ZKProof> {
-  // Your snarkjs/circom proof generation here
-  const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-    { /* your inputs */ },
-    'circuit.wasm',
-    'proving_key.zkey'
-  )
-  return { proof, publicSignals, timestamp: Date.now() }
-}
-\`\`\`
-
-#### 2. **Proof Verification** (`lib/zk-proof.ts`)
-Replace the `verifyGroth16Proof()` function with your verification logic:
-
-\`\`\`typescript
-export async function verifyGroth16Proof(params: ProofVerificationParams): Promise<boolean> {
-  // Your snarkjs verification here
-  return await snarkjs.groth16.verify(
-    params.verificationKey,
-    params.publicSignals,
-    params.proof
-  )
-}
-\`\`\`
-
-#### 3. **Voting Interface** (`components/voting-interface.tsx`)
-The voting component has two main functions you can customize:
-- `handleGenerateProof()` - Called when user generates their ZK proof
-- `handleSubmitVote()` - Called when user submits their vote with proof
-
-Check the console logs for debugging information during development.
-
-### What the ZK Proof Should Demonstrate
-
-Your Groth16 circuit should prove:
-
-1. ✅ User is eligible to vote (e.g., merkle proof of inclusion)
-2. ✅ User hasn't voted before (using nullifiers)
-3. ✅ Vote is for a valid option in the event
-
-**Without revealing:**
-- ❌ Which specific user is voting
-- ❌ Which option they selected
-
-### Recommended Circuit Structure
-
-**Public Inputs:**
-- Event ID
-- Nullifier (prevents double voting)
-- Merkle root (of eligible voters)
-
-**Private Inputs:**
-- User ID / Secret
-- Vote selection
-- Eligibility proof
-- Randomness
-
-## Current Implementation
-
-The app currently uses **localStorage** for demo purposes. In production, you should:
-
-1. Replace auth system with proper backend (e.g., JWT, OAuth)
-2. Store events and votes in a database
-3. Implement backend verification of ZK proofs
-4. Add proper nullifier checking to prevent double voting
-5. Use merkle trees for efficient eligibility verification
+| Route | Purpose |
+| --- | --- |
+| `/` | Landing page. |
+| `/signup` | Generates a private key, registers a user, and stores the current user locally. |
+| `/login` | Hashes the provided private key into a commitment and authenticates with the backend. |
+| `/dashboard` | Lists the current user's events and active events. |
+| `/dashboard/events/create` | Creates a new voting event. |
+| `/dashboard/events/[id]` | Manages membership, starts/ends events, submits votes, and displays results. |
 
 ## Project Structure
 
-\`\`\`
-app/
-├── page.tsx                    # Landing page
-├── login/page.tsx             # Login page
-├── signup/page.tsx            # Signup page
-├── dashboard/
-│   ├── page.tsx               # Dashboard overview
-│   └── events/
-│       ├── create/page.tsx    # Create event form
-│       └── [id]/page.tsx      # Event detail & voting
-components/
-├── voting-interface.tsx       # Main voting UI (ZK integration here)
-├── dashboard-nav.tsx          # Navigation component
-└── ui/                        # UI components
-lib/
-├── auth.ts                    # Auth utilities
-├── events.ts                  # Event management
-├── votes.ts                   # Vote recording
-└── zk-proof.ts               # 🔐 ZK PROOF INTEGRATION MODULE
-\`\`\`
+```text
+client/
+├── app/                    # Next.js App Router pages
+├── components/             # Shared UI and feature components
+├── hooks/                  # UI hooks
+├── lib/
+│   ├── auth.ts             # User storage, private key generation, MiMC7 commitments
+│   ├── events.ts           # Event API helpers
+│   └── zkproof/            # Groth16 proof helpers and WASM runtime support
+├── public/                 # Static assets and WASM artifacts
+└── styles/                 # Global styles
+```
 
-## Tech Stack
+## Backend Integration
 
-- **Framework**: Next.js 16 (App Router)
-- **Styling**: Tailwind CSS v4
-- **UI Components**: shadcn/ui
-- **Icons**: Lucide React
-- **ZK Proofs**: (Your Groth16 implementation)
+The UI uses cookie-backed sessions and sends requests with `credentials: "include"`.
 
-## Development Notes
+Main backend endpoints used by the client:
 
-- Check browser console for `[v0]` and `[ZK]` debug logs
-- The app shows helpful developer notes in the UI during development
-- All ZK integration points are clearly marked with ⚠️ comments
+- `POST /auth/signup`
+- `POST /auth/login`
+- `GET /users/events`
+- `GET /users/event/:event_id`
+- `POST /users/events`
+- `POST /event/:id/members/:commitment`
+- `DELETE /event/:id/members/:commitment`
+- `POST /event/:id/start`
+- `POST /event/:id/vote`
+- `POST /event/:id/end`
+- `GET /event/:id/tally`
+- `GET /event/:id/membership/merkle`
+- `DELETE /event/:id`
 
-## Next Steps
+## ZK Proof Notes
 
-1. Implement your Groth16 circuit
-2. Compile your circuit and generate proving/verification keys
-3. Replace mock functions in `lib/zk-proof.ts`
-4. Test proof generation and verification
-5. Deploy with proper backend infrastructure
+Proof-related code lives under `lib/zkproof/`.
 
-## Security Considerations
+- `lib/zkproof/circom/ballot/generate_proof.mjs` builds an encrypted ballot and Groth16 ballot proof.
+- `lib/zkproof/circom/merkletree/generator.mjs` builds a membership proof from Merkle path inputs.
+- `lib/zkproof/circom/nullifier/generateNullifier.mjs` builds the nullifier proof.
+- `lib/zkproof/go/` contains support for loading Go-compiled WASM from `public/proof.wasm`.
+- `lib/zkproof/zk-proof.ts` is an older/mock integration surface kept as a reference.
 
-- Never store plain passwords in production
-- Verify all ZK proofs on the backend
-- Implement proper rate limiting
-- Use HTTPS in production
-- Secure your proving keys appropriately
-- Implement proper session management
+The Circom helpers expect proof artifacts at these public paths:
 
----
+```text
+public/zk/ballot/ballot.wasm
+public/zk/ballot/ballot_final.zkey
+public/zk/merkletree/merkle.wasm
+public/zk/merkletree/merkle_final.zkey
+public/zk/nullifier/nullifier.wasm
+public/zk/nullifier/nullifier_final.zkey
+```
 
-Built with v0 by Vercel
+Generate or copy these artifacts from the circuit subproject before using browser-side proof generation.
+
+## Security Notes
+
+- The signup page displays a private key once; users must save it securely.
+- The private key is used client-side to derive a MiMC7 commitment.
+- `localStorage` is used for current-user convenience and is not a substitute for hardened production auth.
+- Backend proof verification and contract checks are required for production safety.

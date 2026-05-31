@@ -75,7 +75,7 @@ template BallotCircuit(
 
     expX <== kY.out[0] + M * (kyPlusG.xout - kY.out[0]);
     expY <== kY.out[1] + M * (kyPlusG.yout - kY.out[1]);
-
+``
     expX === C2x;
     expY === C2y;
 }
