@@ -65,7 +65,7 @@ After creating build files, you will need to overwrite zkey and wasm file locate
 
 Solidity contracts for each circuit is created while building the circom files, located in `circom/<circuit>/build`. <br>
 Because volte.sol file located in `contracts/volte.sol` uses all the circuit soldity files, you need to replace the main class 
-for each circuit to these:
+for each circuit to:
 
 ballot ---> BallotVerifier <br>
 membership ---> MembershipVerifier <br>
